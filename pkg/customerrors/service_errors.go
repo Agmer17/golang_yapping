@@ -1,4 +1,4 @@
-package errors
+package customerrors
 
 type ServiceErrors struct {
 	Code    int

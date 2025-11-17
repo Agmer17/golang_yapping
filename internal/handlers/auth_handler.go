@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,10 +13,13 @@ type loginRequest struct {
 }
 
 type AuthHandler struct {
+	Service service.AuthServiceInterface
 }
 
-func NewAuthHandler() *AuthHandler {
-	return &AuthHandler{}
+func NewAuthHandler(svc *service.AuthService) *AuthHandler {
+	return &AuthHandler{
+		Service: svc,
+	}
 }
 
 func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
@@ -33,12 +37,16 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 	var rBind loginRequest
 
 	err := c.ShouldBindJSON(&rBind)
-
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "bad request! isi data degan benar"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": rBind, "msg": "berhasil!"})
+	resp, serviceErr := h.Service.LoginService(rBind.Username, rBind.Password, c.Request.Context())
+	if serviceErr != nil {
+		c.JSON(serviceErr.Code, gin.H{"error": serviceErr.Message})
+		return
+	}
 
+	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil", "data": resp})
 }

@@ -1,18 +1,17 @@
 package main
 
 import (
-	"github.com/Agmer17/golang_yapping/internal/handlers"
-	"github.com/gin-gonic/gin"
+	"context"
+
+	"github.com/Agmer17/golang_yapping/configs"
 )
 
 func main() {
+	ctx := context.Background()
 
-	server := gin.Default()
+	app := configs.NewApp(ctx)
 
-	api := server.Group("/api")
+	defer app.Shutdown()
 
-	handlers.NewAuthHandler().RegisterRoutes(api)
-
-	server.Run(":80")
-
+	app.Run()
 }

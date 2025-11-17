@@ -11,8 +11,8 @@ import (
 )
 
 type UserRepositoryInterface interface {
-	GetUserData(string, context.Context) (*model.User, error)
-	AddUser(model.User) model.User
+	GetUserDataByUsername(string, context.Context) (*model.User, error)
+	AddUser(model.User, context.Context) (model.User, error)
 	DeleteUser(uuid.UUID, context.Context) error
 	EditUser(model.User, context.Context) (model.User, error)
 }
@@ -21,9 +21,29 @@ type UserRepository struct {
 	Pool *pgxpool.Pool
 }
 
-func (u *UserRepository) GetUserData(username string, c context.Context) (*model.User, error) {
+func NewUserRepo(pool *pgxpool.Pool) *UserRepository {
+	return &UserRepository{
+		Pool: pool,
+	}
+}
 
-	q := "select * from users where username = $1 limit 1"
+func (u *UserRepository) GetUserDataByUsername(username string, c context.Context) (*model.User, error) {
+
+	q := `
+		select id, 
+			full_name, 
+			username, 
+			email, 
+			password, 
+			birthday, 
+			bio, 
+			profile_picture, 
+			banner_picture, 
+			created_at
+		from users
+		where username = $1
+		limit 1
+		`
 
 	var user model.User
 
@@ -80,7 +100,7 @@ func (u *UserRepository) AddUser(user model.User, c context.Context) (model.User
 
 }
 
-func (u *UserRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
+func (u *UserRepository) DeleteUser(id uuid.UUID, ctx context.Context) error {
 	err := pgx.BeginFunc(ctx, u.Pool, func(tx pgx.Tx) error {
 		q := `delete from users where id = $1`
 
