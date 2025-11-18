@@ -12,9 +12,9 @@ type App struct {
 	Router *gin.Engine
 }
 
-func NewApp(ctx context.Context) *App {
+func NewApp(ctx context.Context, url string) *App {
 
-	pool, err := SetUpDatabase(ctx)
+	pool, err := SetUpDatabase(ctx, url)
 
 	if err != nil {
 		panic(err)

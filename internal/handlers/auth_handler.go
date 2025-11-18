@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/gin-gonic/gin"
@@ -58,7 +59,17 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil", "data": resp})
+	sevenDays := time.Hour * 24 * 7
+
+	c.SetCookie("refreshToken",
+		resp["refreshToken"].(string),
+		int(sevenDays), "/",
+		"",
+		true,
+		true)
+
+	// todo set refresh token ke redis
+	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil", "accessToken": resp["accessToken"]})
 }
 
 func (h *AuthHandler) handleSignUp(c *gin.Context) {
@@ -81,7 +92,7 @@ func (h *AuthHandler) handleSignUp(c *gin.Context) {
 	}
 
 	resp, customErr := h.Service.SignUp(sBind.Username, sBind.Email, sBind.Fullname, sBind.Password, c.Request.Context())
-	if err != nil {
+	if customErr != nil {
 		c.JSON(customErr.Code, gin.H{"message": customErr.Message})
 		return
 	}

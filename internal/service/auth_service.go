@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
+	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -52,9 +53,18 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 		return nil, customerrors.New(http.StatusUnauthorized, "usename atau password salah")
 	}
 
-	// todo : return token
+	accessToken, err := pkg.GenerateToken(data.Id, data.Role, 10)
 
-	return ResponseSchema{"message": "berhasil login", "data": data}, nil
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    http.StatusInternalServerError,
+			Message: "Terjadi kesalahan di server : " + err.Error(),
+		}
+	}
+
+	refreshToken, err := pkg.GenerateTokenNoRole(data.Id, 10800)
+
+	return ResponseSchema{"message": "berhasil login", "accessToken": accessToken, "refreshToken": refreshToken}, nil
 
 }
 
@@ -63,7 +73,6 @@ func (a *AuthService) SignUp(username string, email string, fullName string, pas
 	var newUser model.User
 
 	ex, err := a.UserRepo.ExistByNameOrUsername(username, email, c)
-
 	if ex {
 		return nil, &customerrors.ServiceErrors{
 			Code:    http.StatusConflict,

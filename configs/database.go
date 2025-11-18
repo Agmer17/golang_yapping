@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func SetUpDatabase(ctx context.Context) (*pgxpool.Pool, error) {
+func SetUpDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 
 	connStr := "postgres://postgres:agmer@localhost:5432/yapping_db?sslmode=disable"
 

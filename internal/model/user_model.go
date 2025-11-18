@@ -12,6 +12,7 @@ type User struct {
 	Username       string
 	Email          string
 	Password       string
+	Role           string
 	Birthday       *time.Time
 	Bio            *string
 	ProfilePicture *string

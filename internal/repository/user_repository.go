@@ -35,6 +35,7 @@ func (u *UserRepository) GetUserDataByUsername(username string, c context.Contex
 			full_name, 
 			username, 
 			email, 
+			role,
 			password, 
 			birthday, 
 			bio, 
@@ -53,6 +54,7 @@ func (u *UserRepository) GetUserDataByUsername(username string, c context.Contex
 		&user.FullName,
 		&user.Username,
 		&user.Email,
+		&user.Role,
 		&user.Password,
 		&user.Birthday,
 		&user.Bio,
@@ -121,19 +123,17 @@ func (u *UserRepository) DeleteUser(id uuid.UUID, ctx context.Context) error {
 }
 
 func (u *UserRepository) ExistByNameOrUsername(username string, email string, c context.Context) (bool, error) {
-
-	exist := true
+	var exist bool
 
 	q := `
-		SELECT EXISTS (
-			SELECT 1
-			FROM users u
-			WHERE u.username = $1 OR u.email = $2
-		) AS user_exists;
-	`
+        SELECT EXISTS (
+            SELECT 1
+            FROM users u
+            WHERE u.username = $1 OR u.email = $2
+        );
+    `
 
 	err := u.Pool.QueryRow(c, q, username, email).Scan(&exist)
-
 	if err != nil {
 		return false, err
 	}
