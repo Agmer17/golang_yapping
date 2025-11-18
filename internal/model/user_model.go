@@ -13,8 +13,8 @@ type User struct {
 	Email          string
 	Password       string
 	Birthday       *time.Time
-	Bio            string
-	ProfilePicture string
-	BannerPicture  string
+	Bio            *string
+	ProfilePicture *string
+	BannerPicture  *string
 	CreatedAt      time.Time
 }

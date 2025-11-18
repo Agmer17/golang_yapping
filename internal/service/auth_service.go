@@ -5,14 +5,18 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
+type ResponseSchema map[string]any
+
 type AuthServiceInterface interface {
-	LoginService(string, string, context.Context) (map[string]any, *customerrors.ServiceErrors)
+	LoginService(string, string, context.Context) (ResponseSchema, *customerrors.ServiceErrors)
+	SignUp(username string, email string, fullName string, password string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
 }
 
 type AuthService struct {
@@ -25,11 +29,10 @@ func NewAuthService(repo *repository.UserRepository) *AuthService {
 	}
 }
 
-func (a *AuthService) LoginService(username string, pw string, ctx context.Context) (map[string]any, *customerrors.ServiceErrors) {
+func (a *AuthService) LoginService(username string, pw string, ctx context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
 	data, err := a.UserRepo.GetUserDataByUsername(username, ctx)
 
 	if err != nil {
-
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusNotFound,
@@ -49,6 +52,51 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 		return nil, customerrors.New(http.StatusUnauthorized, "usename atau password salah")
 	}
 
-	return map[string]any{"message": "berhasil login", "data": data}, nil
+	// todo : return token
 
+	return ResponseSchema{"message": "berhasil login", "data": data}, nil
+
+}
+
+func (a *AuthService) SignUp(username string, email string, fullName string, password string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
+
+	var newUser model.User
+
+	ex, err := a.UserRepo.ExistByNameOrUsername(username, email, c)
+
+	if ex {
+		return nil, &customerrors.ServiceErrors{
+			Code:    http.StatusConflict,
+			Message: "username atau email sudah terdaftar",
+		}
+	}
+
+	newUser.Username = username
+	newUser.Email = email
+
+	newUser.FullName = fullName
+	hashedPw, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Terjadi kesalahan di server silahkan coba lagi nanti",
+		}
+	}
+
+	newUser.Password = string(hashedPw)
+
+	data, err := a.UserRepo.AddUser(newUser, c)
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: err.Error(),
+		}
+	}
+
+	return ResponseSchema{
+		"message":    "berhasil membuat akun",
+		"created_at": data.CreatedAt,
+	}, nil
 }

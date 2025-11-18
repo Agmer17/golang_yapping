@@ -15,6 +15,7 @@ type UserRepositoryInterface interface {
 	AddUser(model.User, context.Context) (model.User, error)
 	DeleteUser(uuid.UUID, context.Context) error
 	EditUser(model.User, context.Context) (model.User, error)
+	ExistByNameOrUsername(username string, email string, c context.Context) (bool, error)
 }
 
 type UserRepository struct {
@@ -117,6 +118,27 @@ func (u *UserRepository) DeleteUser(id uuid.UUID, ctx context.Context) error {
 	})
 
 	return err
+}
+
+func (u *UserRepository) ExistByNameOrUsername(username string, email string, c context.Context) (bool, error) {
+
+	exist := true
+
+	q := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM users u
+			WHERE u.username = $1 OR u.email = $2
+		) AS user_exists;
+	`
+
+	err := u.Pool.QueryRow(c, q, username, email).Scan(&exist)
+
+	if err != nil {
+		return false, err
+	}
+
+	return exist, nil
 }
 
 func (u *UserRepository) EditUser(e model.User, c context.Context) (model.User, error) {

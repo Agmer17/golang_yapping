@@ -1,15 +1,24 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 type loginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+}
+
+type SignUpRequest struct {
+	Username string `json:"username" binding:"required,min=4,max=150"`
+	Email    string `json:"email" binding:"required,email"`
+	Fullname string `json:"full_name" binding:"required,min=4,max=150"`
+	Password string `json:"password" binding:"required,min=5,max=150"`
 }
 
 type AuthHandler struct {
@@ -28,6 +37,7 @@ func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	{
 		auth.POST("/login", h.handleLogin)
+		auth.POST("/sign-up", h.handleSignUp)
 	}
 
 }
@@ -49,4 +59,32 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil", "data": resp})
+}
+
+func (h *AuthHandler) handleSignUp(c *gin.Context) {
+
+	var sBind SignUpRequest
+
+	err := c.ShouldBindJSON(&sBind)
+
+	if err != nil {
+		validationErrors, ok := err.(validator.ValidationErrors)
+		if ok {
+			errorsMap := make(map[string]string)
+			for _, e := range validationErrors {
+				errorsMap[e.Field()] = fmt.Sprintf("failed on '%s' tag", e.Tag())
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"errors": errorsMap})
+			return
+		}
+
+	}
+
+	resp, customErr := h.Service.SignUp(sBind.Username, sBind.Email, sBind.Fullname, sBind.Password, c.Request.Context())
+	if err != nil {
+		c.JSON(customErr.Code, gin.H{"message": customErr.Message})
+		return
+	}
+
+	c.JSON(http.StatusCreated, resp)
 }
