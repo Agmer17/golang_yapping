@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -21,13 +23,52 @@ type AuthServiceInterface interface {
 }
 
 type AuthService struct {
-	UserRepo repository.UserRepositoryInterface
+	UserRepo    repository.UserRepositoryInterface
+	RedisClient *redis.Client
 }
 
-func NewAuthService(repo *repository.UserRepository) *AuthService {
+func NewAuthService(repo *repository.UserRepository, redclient *redis.Client) *AuthService {
 	return &AuthService{
-		UserRepo: repo,
+		UserRepo:    repo,
+		RedisClient: redclient,
 	}
+}
+
+func (a *AuthService) setRedisSession(
+	uId string,
+	refreshToken string,
+	ctx context.Context,
+) error {
+
+	key := "session:" + refreshToken
+
+	refreshClaims, err := pkg.VerifyRefreshToken(refreshToken)
+
+	if err != nil {
+		return err
+	}
+
+	expiresAt := refreshClaims.ExpiresAt.Time
+	ttl := time.Until(expiresAt)
+
+	data := map[string]any{
+		"user_id":       uId,
+		"refresh_token": refreshToken,
+		"expires_at":    expiresAt.Format(time.RFC3339),
+		"created_at":    time.Now().Format(time.RFC3339),
+	}
+
+	// set hashmap
+	if err := a.RedisClient.HSet(ctx, key, data).Err(); err != nil {
+		return err
+	}
+
+	// set TTL Redis SESUAI exp refresh token
+	if err := a.RedisClient.Expire(ctx, key, ttl).Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (a *AuthService) LoginService(username string, pw string, ctx context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
@@ -43,7 +84,7 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 
 		return nil, &customerrors.ServiceErrors{
 			Code:    http.StatusInternalServerError,
-			Message: "ada kesalahan di server",
+			Message: "ada kesalahan di server error : " + err.Error(),
 		}
 	}
 
@@ -64,7 +105,16 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 
 	refreshToken, err := pkg.GenerateTokenNoRole(data.Id, 10800)
 
-	return ResponseSchema{"message": "berhasil login", "accessToken": accessToken, "refreshToken": refreshToken}, nil
+	err = a.setRedisSession(data.Id.String(), refreshToken, ctx)
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    http.StatusInternalServerError,
+			Message: "Terjadi kesalahan di server : " + err.Error(),
+		}
+	}
+
+	return ResponseSchema{"message": "berhasil login", "accessToken": accessToken, "refreshToken": refreshToken, "id": data.Id}, nil
 
 }
 

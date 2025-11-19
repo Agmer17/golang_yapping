@@ -12,6 +12,7 @@ import (
 
 type UserRepositoryInterface interface {
 	GetUserDataByUsername(string, context.Context) (*model.User, error)
+	GetUserDataById(uuid.UUID, context.Context) (*model.User, error)
 	AddUser(model.User, context.Context) (model.User, error)
 	DeleteUser(uuid.UUID, context.Context) error
 	EditUser(model.User, context.Context) (model.User, error)
@@ -145,5 +146,48 @@ func (u *UserRepository) EditUser(e model.User, c context.Context) (model.User, 
 
 	// todo: IMPLEMENT INI
 	return model.User{}, nil
+
+}
+
+func (u *UserRepository) GetUserDataById(id uuid.UUID, ctx context.Context) (*model.User, error) {
+
+	q := `
+		select id, 
+			full_name, 
+			username, 
+			email, 
+			role,
+			password, 
+			birthday, 
+			bio, 
+			profile_picture, 
+			banner_picture, 
+			created_at
+		from users
+		where id = $1
+		limit 1
+		`
+
+	var user model.User
+
+	err := u.Pool.QueryRow(ctx, q, id).Scan(
+		&user.Id,
+		&user.FullName,
+		&user.Username,
+		&user.Email,
+		&user.Role,
+		&user.Password,
+		&user.Birthday,
+		&user.Bio,
+		&user.ProfilePicture,
+		&user.BannerPicture,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 
 }

@@ -5,26 +5,31 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type App struct {
 	DB     *pgxpool.Pool
 	Router *gin.Engine
+	Redis  *redis.Client
 }
 
-func NewApp(ctx context.Context, url string) *App {
+func NewApp(ctx context.Context, dbUrl string, redCtx context.Context, redUrl string) *App {
 
-	pool, err := SetUpDatabase(ctx, url)
+	pool, err := SetUpDatabase(ctx, dbUrl)
+
+	rdb := SetUpRedis(redCtx, redUrl)
 
 	if err != nil {
 		panic(err)
 	}
 
-	r := SetUpRouter(pool)
+	r := SetUpRouter(pool, rdb)
 
 	return &App{
 		DB:     pool,
 		Router: r,
+		Redis:  rdb,
 	}
 
 }

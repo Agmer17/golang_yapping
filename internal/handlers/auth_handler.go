@@ -68,8 +68,10 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 		true,
 		true)
 
-	// todo set refresh token ke redis
-	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil", "accessToken": resp["accessToken"]})
+	c.JSON(http.StatusAccepted, gin.H{"message": "berhasil",
+		"accessToken": resp["accessToken"],
+		"id":          resp["id"],
+	})
 }
 
 func (h *AuthHandler) handleSignUp(c *gin.Context) {

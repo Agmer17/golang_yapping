@@ -16,13 +16,15 @@ func main() {
 	}
 
 	dbUrl := os.Getenv("DATABASE_URL")
+	redisUrl := os.Getenv("REDIS_URL")
 	jwtSecret := os.Getenv("DATABASE_URL")
 
 	pkg.JwtInit(jwtSecret)
 
 	ctx := context.Background()
+	redCtx := context.Background()
 
-	app := configs.NewApp(ctx, dbUrl)
+	app := configs.NewApp(ctx, dbUrl, redCtx, redisUrl)
 
 	defer app.Shutdown()
 

@@ -92,3 +92,24 @@ func VerifyToken(tokenString string) (*Claims, error) {
 
 	return claims, nil
 }
+
+func VerifyRefreshToken(tokenString string) (*RefreshTokenClaims, error) {
+	claims := &RefreshTokenClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("invalid refresh token")
+	}
+
+	return claims, nil
+}
