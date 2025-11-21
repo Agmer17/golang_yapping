@@ -49,13 +49,15 @@ func (h *AuthHandler) handleLogin(c *gin.Context) {
 
 	err := c.ShouldBindJSON(&rBind)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "bad request! isi data degan benar"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad request! isi data degan benar"})
+		c.Abort()
 		return
 	}
 
 	resp, serviceErr := h.Service.LoginService(rBind.Username, rBind.Password, c.Request.Context())
 	if serviceErr != nil {
 		c.JSON(serviceErr.Code, gin.H{"error": serviceErr.Message})
+		c.Abort()
 		return
 	}
 
@@ -88,6 +90,7 @@ func (h *AuthHandler) handleSignUp(c *gin.Context) {
 				errorsMap[e.Field()] = fmt.Sprintf("failed on '%s' tag", e.Tag())
 			}
 			c.JSON(http.StatusBadRequest, gin.H{"errors": errorsMap})
+			c.Abort()
 			return
 		}
 
@@ -95,7 +98,8 @@ func (h *AuthHandler) handleSignUp(c *gin.Context) {
 
 	resp, customErr := h.Service.SignUp(sBind.Username, sBind.Email, sBind.Fullname, sBind.Password, c.Request.Context())
 	if customErr != nil {
-		c.JSON(customErr.Code, gin.H{"message": customErr.Message})
+		c.JSON(customErr.Code, gin.H{"error": customErr.Message})
+		c.Abort()
 		return
 	}
 
