@@ -17,7 +17,7 @@ func main() {
 
 	dbUrl := os.Getenv("DATABASE_URL")
 	redisUrl := os.Getenv("REDIS_URL")
-	jwtSecret := os.Getenv("DATABASE_URL")
+	jwtSecret := os.Getenv("JWT_SECRET")
 
 	pkg.JwtInit(jwtSecret)
 
