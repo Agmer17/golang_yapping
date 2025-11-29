@@ -25,6 +25,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	// --------------------------------------------------
 
 	// ------------------ WEBSOCKET ---------------------
+	wsHandler := handlers.NewWebsocketHandler()
 	// --------------------------------------------------
 
 	server := gin.Default()
@@ -33,6 +34,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	api := server.Group("/api")
 	authHandler.RegisterRoutes(api)
 	userHandler.RegisterRoutes(api)
+	wsHandler.RegisterRoutes(api)
 
 	return server
 

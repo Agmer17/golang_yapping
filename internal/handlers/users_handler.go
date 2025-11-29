@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/Agmer17/golang_yapping/pkg"
@@ -36,29 +35,23 @@ func (u *UserHandler) handleMyProfile(c *gin.Context) {
 
 	authHeader := c.GetHeader("Authorization")
 
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"message": "Harap login sebelum mengakses ini",
-		})
-		c.Abort()
-		return
+	token, err := pkg.GetAccessToken(authHeader)
 
-	}
-	parts := strings.SplitN(authHeader, " ", 2)
-
-	fmt.Println("parts ", parts)
-
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Header otorisasi tidak valid!"})
+	if err != nil {
+		fmt.Println("\n\n\n\n\n err : ", err.Error())
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token kadaluarsa atau tidak valid"})
 		c.Abort()
 		return
 	}
 
-	claims, err := pkg.VerifyToken(parts[1])
+	fmt.Println("\n\n\n\n token : ", token)
+	claims, err := pkg.VerifyToken(token)
 
 	fmt.Println("claims : ", claims)
 
 	if err != nil {
+		fmt.Println("\n\n\n\n\n err : ", err.Error())
+
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token kadaluarsa atau tidak valid"})
 		c.Abort()
 		return
