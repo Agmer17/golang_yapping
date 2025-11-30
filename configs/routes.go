@@ -2,6 +2,7 @@ package configs
 
 import (
 	"github.com/Agmer17/golang_yapping/internal/handlers"
+	"github.com/Agmer17/golang_yapping/internal/middleware"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/gin-contrib/cors"
@@ -33,8 +34,11 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 
 	api := server.Group("/api")
 	authHandler.RegisterRoutes(api)
-	userHandler.RegisterRoutes(api)
-	wsHandler.RegisterRoutes(api)
+
+	protected := api.Group("/")
+	protected.Use(middleware.AuthMiddleware())
+	userHandler.RegisterRoutes(protected)
+	wsHandler.RegisterRoutes(protected)
 
 	return server
 

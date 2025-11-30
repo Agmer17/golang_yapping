@@ -39,6 +39,7 @@ func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		auth.POST("/login", h.handleLogin)
 		auth.POST("/sign-up", h.handleSignUp)
+		auth.GET("/refresh-session", h.refreshSession)
 	}
 
 }
@@ -104,4 +105,29 @@ func (h *AuthHandler) handleSignUp(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, resp)
+}
+
+func (h *AuthHandler) refreshSession(c *gin.Context) {
+
+	refreshToken, err := c.Cookie("refreshToken")
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Harap login terlebih dahulu sebelum mengakses fitur ini!",
+		})
+		c.Abort()
+		return
+	}
+
+	accessToken, serviceErr := h.Service.RefreshSession(refreshToken, c.Request.Context())
+
+	if serviceErr != nil {
+		c.JSON(serviceErr.Code, gin.H{
+			"error": serviceErr.Message,
+		})
+		c.Abort()
+		return
+	}
+
+	c.JSON(http.StatusOK, accessToken)
 }

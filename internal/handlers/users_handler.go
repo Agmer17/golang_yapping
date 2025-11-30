@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/Agmer17/golang_yapping/internal/service"
-	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -33,31 +32,26 @@ func NewUserHandler(s *service.UserService) *UserHandler {
 
 func (u *UserHandler) handleMyProfile(c *gin.Context) {
 
-	authHeader := c.GetHeader("Authorization")
+	// userClaims, _ := c.Get("userId")
 
-	token, err := pkg.GetAccessToken(authHeader)
+	val, ok := c.Get("userId")
 
-	if err != nil {
-		fmt.Println("\n\n\n\n\n err : ", err.Error())
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token kadaluarsa atau tidak valid"})
-		c.Abort()
+	userId := val.(uuid.UUID)
+
+	if !ok {
+		c.JSON(401, gin.H{
+			"error": "harap login sebelum mengakses ini!",
+		})
 		return
 	}
-
-	fmt.Println("\n\n\n\n token : ", token)
-	claims, err := pkg.VerifyToken(token)
-
-	fmt.Println("claims : ", claims)
+	data, err := u.svc.GetMyProfile(userId, c.Request.Context())
 
 	if err != nil {
-		fmt.Println("\n\n\n\n\n err : ", err.Error())
-
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token kadaluarsa atau tidak valid"})
-		c.Abort()
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Data tidak ditemukan atau terjadi kesalahan di server",
+		})
 		return
 	}
-
-	data, err := u.svc.GetMyProfile(claims.UserID, c.Request.Context())
 
 	c.JSON(http.StatusOK, gin.H{
 		"data":    data,

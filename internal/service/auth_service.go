@@ -10,6 +10,7 @@ import (
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -20,6 +21,7 @@ type ResponseSchema map[string]any
 type AuthServiceInterface interface {
 	LoginService(string, string, context.Context) (ResponseSchema, *customerrors.ServiceErrors)
 	SignUp(username string, email string, fullName string, password string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
+	RefreshSession(token string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
 }
 
 type AuthService struct {
@@ -158,4 +160,57 @@ func (a *AuthService) SignUp(username string, email string, fullName string, pas
 		"message":    "berhasil membuat akun",
 		"created_at": data.CreatedAt,
 	}, nil
+}
+
+func (a *AuthService) RefreshSession(token string, ctx context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
+
+	redisKey := "session:" + token
+	val, err := a.RedisClient.HGet(ctx, redisKey, "user_id").Result()
+
+	if err == redis.Nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    401,
+			Message: "Sesi sudah habis, silahkan login ulang",
+		}
+	}
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "error : " + err.Error(),
+		}
+
+	}
+
+	userId, err := uuid.Parse(val)
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Terjadi error di server! " + err.Error(),
+		}
+	}
+
+	userData, err := a.UserRepo.GetUserDataById(userId, ctx)
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Terjadi kesalahan di server " + err.Error(),
+		}
+	}
+
+	accessToken, err := pkg.GenerateToken(userData.Id, userData.Role, 15)
+
+	if err != nil {
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Gagal membuat token! terjadi kesalahan di server " + err.Error(),
+		}
+	}
+
+	return ResponseSchema{
+		"accessToken": accessToken,
+		"id":          userData.Id,
+	}, nil
+
 }
