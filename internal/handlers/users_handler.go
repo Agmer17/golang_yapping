@@ -16,8 +16,6 @@ func (u *UserHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	user := rg.Group("/user")
 
-	user.Use()
-
 	{
 		user.GET("/me", u.handleMyProfile)
 	}
@@ -32,18 +30,16 @@ func NewUserHandler(s *service.UserService) *UserHandler {
 
 func (u *UserHandler) handleMyProfile(c *gin.Context) {
 
-	// userClaims, _ := c.Get("userId")
-
 	val, ok := c.Get("userId")
-
-	userId := val.(uuid.UUID)
-
 	if !ok {
 		c.JSON(401, gin.H{
 			"error": "harap login sebelum mengakses ini!",
 		})
 		return
 	}
+
+	userId := val.(uuid.UUID)
+
 	data, err := u.svc.GetMyProfile(userId, c.Request.Context())
 
 	if err != nil {

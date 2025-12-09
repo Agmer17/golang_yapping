@@ -36,6 +36,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	authHandler.RegisterRoutes(api)
 
 	protected := api.Group("/")
+
 	protected.Use(middleware.AuthMiddleware())
 	userHandler.RegisterRoutes(protected)
 	wsHandler.RegisterRoutes(protected)

@@ -84,6 +84,10 @@ func (c *Client) ReadPump() {
 
 			c.Room.Broadcast <- message
 
+		case actionPrivateMessage:
+
+			c.processPrivateMessage(jsonEvent)
+
 		default:
 			c.sendError("event not supported")
 		}
@@ -140,5 +144,58 @@ func (c *Client) sendError(msg string) {
 	})
 
 	c.Send <- errEvent
+
+}
+
+func (c *Client) processPrivateMessage(jsonEvent WebsocketEvent) {
+
+	var pvmsg PrivateMessageData
+
+	if err := json.Unmarshal(jsonEvent.Data, &pvmsg); err != nil {
+		c.sendError("Terjadi kesalahan saat parsing payload")
+		return
+	}
+
+	if err := binding.Validator.ValidateStruct(pvmsg); err != nil {
+		c.sendError("Harap kirim payload dengan benar!")
+		return
+	}
+
+	receiver := c.Room.Hub.GetRoom("user:" + pvmsg.To.String())
+
+	resData, err := json.Marshal(PrivateMessageData{
+		To:        pvmsg.To,
+		Message:   pvmsg.Message,
+		Media_url: pvmsg.Media_url,
+		From:      c.UserId,
+	})
+
+	if err != nil {
+		c.sendError("Gagal memproses pesan")
+		return
+	}
+
+	response, err := json.Marshal(WebsocketEvent{
+		Action: jsonEvent.Action,
+		Detail: jsonEvent.Detail,
+		Type:   typeSystemOk,
+		Data:   resData,
+	})
+
+	if err != nil {
+		c.sendError("Gagal memproses pesan!")
+		return
+	}
+
+	if receiver == nil {
+		c.Room.Broadcast <- response
+		return
+	}
+
+	c.Room.Broadcast <- response
+
+	if c.Room != receiver {
+		receiver.Broadcast <- response
+	}
 
 }
