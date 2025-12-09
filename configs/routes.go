@@ -13,7 +13,10 @@ import (
 
 func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 
+	// ---------------- REPOSITORY ---------------
 	userRepo := repository.NewUserRepo(p)
+	chatRepo := repository.NewChatRepo(p)
+	// --------------------------------------------
 
 	// unprotected
 	authService := service.NewAuthService(userRepo, r)
@@ -23,6 +26,8 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 
 	userService := service.NewUserService(userRepo)
 	userHandler := handlers.NewUserHandler(userService)
+
+	chatService := service.NewChatService(chatRepo)
 	// --------------------------------------------------
 
 	// ------------------ WEBSOCKET ---------------------
