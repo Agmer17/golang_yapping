@@ -20,6 +20,7 @@ func main() {
 	jwtSecret := os.Getenv("JWT_SECRET")
 
 	pkg.JwtInit(jwtSecret)
+	pkg.MustUploadsInit()
 
 	ctx := context.Background()
 	redCtx := context.Background()

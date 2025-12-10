@@ -22,16 +22,17 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	authService := service.NewAuthService(userRepo, r)
 	authHandler := handlers.NewAuthHandler(authService)
 
-	// ------------------- PROTECTED --------------------
-
+	// ------------------- service --------------------
 	userService := service.NewUserService(userRepo)
-	userHandler := handlers.NewUserHandler(userService)
-
 	chatService := service.NewChatService(chatRepo)
+
 	// --------------------------------------------------
 
-	// ------------------ WEBSOCKET ---------------------
+	// ------------------- PROTECTED --------------------
+
+	userHandler := handlers.NewUserHandler(userService)
 	wsHandler := handlers.NewWebsocketHandler()
+	chatHandler := handlers.NewChatHandler(chatService)
 	// --------------------------------------------------
 
 	server := gin.Default()
@@ -45,6 +46,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	protected.Use(middleware.AuthMiddleware())
 	userHandler.RegisterRoutes(protected)
 	wsHandler.RegisterRoutes(protected)
+	chatHandler.RegisterRoutes(protected)
 
 	return server
 
