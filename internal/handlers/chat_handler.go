@@ -86,7 +86,7 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 
 		fmt.Println(cm)
 
-		svErr := chat.svc.SaveChat(&cm)
+		svErr := chat.svc.SaveChat(&cm, c.Request.Context())
 
 		if svErr != nil {
 			c.JSON(svErr.Code, gin.H{
@@ -140,7 +140,7 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 			ChatMedia: &fileName,
 		}
 
-		svErr := chat.svc.SaveChat(&cm)
+		svErr := chat.svc.SaveChat(&cm, c.Request.Context())
 
 		if svErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{

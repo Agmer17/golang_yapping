@@ -2,18 +2,16 @@ package ws
 
 import (
 	"encoding/json"
-
-	"github.com/google/uuid"
 )
 
 const (
-	actionNotification   = "SYSTEM_NOTIFICATION"
-	actionSystem         = "SYSTEM"
-	actionSubscribe      = "SUBSCRIBE"
-	actionPrivateMessage = "PRIVATE_MESSAGE"
+	ActionNotification   = "SYSTEM_NOTIFICATION"
+	ActionSystem         = "SYSTEM"
+	ActionSubscribe      = "SUBSCRIBE"
+	ActionPrivateMessage = "PRIVATE_MESSAGE"
 
-	typeSystemError = "ERROR"
-	typeSystemOk    = "OK"
+	TypeSystemError = "ERROR"
+	TypeSystemOk    = "OK"
 )
 
 type WebsocketEvent struct {
@@ -32,9 +30,16 @@ type JoinRoomEventData struct {
 	JoinTo string `json:"join_to" binding:"required"`
 }
 
+// user metadata
+
+type UserMetadata struct {
+	Username       string
+	FullName       string
+	ProfilePicture *string
+}
+
 type PrivateMessageData struct {
-	To        uuid.UUID `json:"to" binding:"required"`
-	Message   string    `json:"text_message" binding:"required"`
-	Media_url string    `json:"media_url"`
-	From      uuid.UUID `json:"from"`
+	Message  *string      `json:"text_message" binding:"required"`
+	MediaUrl *string      `json:"media_url"`
+	From     UserMetadata `json:"from"`
 }

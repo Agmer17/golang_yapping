@@ -28,7 +28,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 
 	// ------------------- service --------------------
 	userService := service.NewUserService(userRepo)
-	chatService := service.NewChatService(chatRepo, hub)
+	chatService := service.NewChatService(chatRepo, hub, userService)
 
 	// --------------------------------------------------
 

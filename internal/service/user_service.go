@@ -26,6 +26,7 @@ type publicUserData struct {
 type UserServiceInterface interface {
 	GetUserData(username string) (ResponseSchema, error)
 	GetMyProfile(id uuid.UUID, ctx context.Context) (ResponseSchema, error)
+	GetUserDataById(id uuid.UUID, ctx context.Context) (publicUserData, error)
 }
 
 type UserService struct {
@@ -74,4 +75,26 @@ func (u *UserService) GetMyProfile(id uuid.UUID, ctx context.Context) (ResponseS
 	return ResponseSchema{
 		"data": respData,
 	}, nil
+}
+
+func (u *UserService) GetUserDataById(id uuid.UUID, ctx context.Context) (publicUserData, error) {
+
+	q, err := u.Pool.GetUserDataById(id, ctx)
+
+	if err != nil {
+		return publicUserData{}, err
+	}
+
+	userData := publicUserData{
+		Id:             q.Id,
+		Username:       q.Username,
+		FullName:       q.FullName,
+		ProfilePicture: q.ProfilePicture,
+		BannerPicture:  q.BannerPicture,
+		Bio:            q.Bio,
+		Birthday:       q.Birthday,
+		CreatedAt:      q.CreatedAt,
+	}
+
+	return userData, nil
 }
