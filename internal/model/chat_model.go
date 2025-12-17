@@ -1,7 +1,6 @@
 package model
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,8 +11,8 @@ type ChatModel struct {
 	SenderId   uuid.UUID
 	ReceiverId uuid.UUID
 	ReplyTo    uuid.UUID
-	ChatText   sql.NullString
-	ChatMedia  sql.NullString
+	ChatText   *string
+	ChatMedia  *string
 	PostId     uuid.UUID
 	IsRead     bool
 	CreatedAt  time.Time

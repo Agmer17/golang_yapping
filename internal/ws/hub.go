@@ -60,3 +60,13 @@ func (h *Hub) removeRoom(roomId string) {
 	}
 
 }
+
+func (h *Hub) SendPayloadTo(roomId string, payload []byte) {
+
+	room := h.GetRoom(roomId)
+
+	if room != nil {
+		room.Broadcast <- payload
+	}
+
+}

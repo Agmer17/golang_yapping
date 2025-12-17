@@ -16,7 +16,7 @@ func NewRooms(hub *Hub, id string) *Room {
 	return &Room{
 		Id:         id,
 		Clients:    make(map[*Client]bool),
-		Broadcast:  make(chan []byte),
+		Broadcast:  make(chan []byte, 10),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Hub:        hub,
@@ -56,5 +56,6 @@ func (r *Room) Run() {
 				}
 			}
 		}
+
 	}
 }
