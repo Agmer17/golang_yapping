@@ -3,16 +3,30 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"mime/multipart"
+	"net/http"
+	"strings"
 
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/internal/ws"
+	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
 	"github.com/google/uuid"
 )
 
+type ChatPostInput struct {
+	SenderId   uuid.UUID
+	ReceiverId string
+	ReplyTo    *string
+	ChatText   *string
+	PostId     *string
+	MediaFiles []*multipart.FileHeader
+}
+
 type ChatServiceInterface interface {
-	SaveChat(m *model.ChatModel, ctx context.Context) *customerrors.ServiceErrors
+	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
 	GetChatBeetween(r uuid.UUID, s uuid.UUID) []model.ChatModel
 }
 
@@ -30,7 +44,7 @@ func NewChatService(c repository.ChatRepositoryInterface, h *ws.Hub, u *UserServ
 	}
 }
 
-func (cs *ChatService) SaveChat(d *model.ChatModel, ctx context.Context) *customerrors.ServiceErrors {
+func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors {
 
 	isValid := isChatValid(d)
 	if !isValid {
@@ -41,17 +55,20 @@ func (cs *ChatService) SaveChat(d *model.ChatModel, ctx context.Context) *custom
 
 	}
 
-	senderMetaData, err := cs.usv.GetUserDataById(d.SenderId, ctx)
+	if len(d.MediaFiles) != 0 {
+		// todo : olah file nya
+		metadata, svcErr := processAttachment(d.MediaFiles)
+		if svcErr != nil {
 
-	if err != nil {
-		return &customerrors.ServiceErrors{
-			Code:    404,
-			Message: "sender tidak ditemukan!",
+			return svcErr
 		}
+		fmt.Println(metadata)
+
+		go cs.sendChat(d, metadata)
+		return nil
 	}
 
-	go cs.sendMessage(d, senderMetaData)
-
+	go cs.sendChat(d, []model.ChatAttachment{})
 	return nil
 
 }
@@ -66,10 +83,10 @@ func isPStrEmpty(s *string) bool {
 	return s == nil || *s == ""
 }
 
-func isChatValid(d *model.ChatModel) bool {
+func isChatValid(d *ChatPostInput) bool {
 	chatTextEmpty := isPStrEmpty(d.ChatText)
-	chatMediaEmpty := isPStrEmpty(d.ChatMedia)
-	postIdEmpty := d.PostId == uuid.Nil
+	chatMediaEmpty := len(d.MediaFiles) == 0
+	postIdEmpty := isPStrEmpty(d.PostId)
 
 	if chatTextEmpty && chatMediaEmpty && postIdEmpty {
 		return false
@@ -78,28 +95,90 @@ func isChatValid(d *model.ChatModel) bool {
 	return true
 }
 
-func (cs *ChatService) sendMessage(d *model.ChatModel, senderMetaData publicUserData) {
+func processAttachment(att []*multipart.FileHeader) ([]model.ChatAttachment, *customerrors.ServiceErrors) {
 
-	MessageData, _ := json.Marshal(ws.PrivateMessageData{
-		Message:  d.ChatText,
-		MediaUrl: d.ChatMedia,
-		From: ws.UserMetadata{
-			Username:       senderMetaData.Username,
-			FullName:       senderMetaData.FullName,
-			ProfilePicture: senderMetaData.ProfilePicture,
-		},
-	})
+	var chatAttachments []model.ChatAttachment = make([]model.ChatAttachment, 0)
 
-	event := ws.WebsocketEvent{
-		Action: ws.ActionPrivateMessage,
-		Detail: "Somebody send you a message",
-		Type:   ws.TypeSystemOk,
-		Data:   MessageData,
+	for _, v := range att {
+
+		mimeType, err := pkg.DetectFileType(v)
+
+		if err != nil {
+			return nil, &customerrors.ServiceErrors{
+				Code:    http.StatusInternalServerError,
+				Message: "Terjadi kesalahan saat menyimpan file " + err.Error(),
+			}
+		}
+
+		ext, ok := pkg.IsTypeSupportted(mimeType)
+
+		if !ok {
+
+			return nil, &customerrors.ServiceErrors{
+				Code:    http.StatusBadRequest,
+				Message: "File saat ini tidak didukung!",
+			}
+
+		}
+
+		fName, err := pkg.SavePrivateFile(v, ext)
+
+		if err != nil {
+			return nil, &customerrors.ServiceErrors{
+				Code:    http.StatusInternalServerError,
+				Message: "Gagal saat menyimpan file  " + err.Error(),
+			}
+		}
+
+		attObj := model.ChatAttachment{
+			FileName:  fName,
+			MediaType: getMediaType(mimeType),
+		}
+
+		chatAttachments = append(chatAttachments, attObj)
+
 	}
 
-	payload, _ := json.Marshal(event)
-	rcvRoomId := "user:" + d.ReceiverId.String()
+	return chatAttachments, nil
 
-	cs.Hub.SendPayloadTo(rcvRoomId, payload)
+}
+
+func getMediaType(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "IMAGE"
+	case strings.HasPrefix(mime, "video/"):
+		return "VIDEO"
+	case strings.HasPrefix(mime, "audio/"):
+		return "AUDIO"
+	case strings.HasPrefix(mime, "application/"):
+		return "DOCUMENT"
+	default:
+		return ""
+	}
+}
+
+func (cs *ChatService) sendChat(d *ChatPostInput, att []model.ChatAttachment) {
+	receiverRoom := "user:" + d.ReceiverId
+	media := []string{}
+
+	for _, v := range att {
+		media = append(media, v.FileName)
+	}
+
+	payloadData, _ := json.Marshal(ws.PrivateMessageData{
+		Message:  d.ChatText,
+		MediaUrl: media,
+	})
+
+	// todo ini testing doang
+	payload, _ := json.Marshal(ws.WebsocketEvent{
+		Action: ws.ActionPrivateMessage,
+		Detail: "NEW MESSSAGE ARRIVED",
+		Type:   ws.TypeSystemOk,
+		Data:   payloadData,
+	})
+
+	cs.Hub.SendPayloadTo(receiverRoom, payload)
 
 }

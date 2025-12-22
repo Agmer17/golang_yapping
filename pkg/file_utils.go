@@ -11,6 +11,29 @@ import (
 	"github.com/google/uuid"
 )
 
+var allowedMimes = map[string]bool{
+	// image
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+
+	// video
+	"video/mp4":       true,
+	"video/webm":      true,
+	"video/quicktime": true,
+
+	// audio
+	"audio/mpeg": true,
+	"audio/wav":  true,
+	"audio/ogg":  true,
+
+	// document
+	"application/pdf":    true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"text/plain": true,
+}
+
 func getProjectRoot() (string, error) {
 	projectPath, err := os.Getwd()
 	if err != nil {
@@ -63,15 +86,17 @@ func DetectFileType(fileHeader *multipart.FileHeader) (string, error) {
 	return mimeType, nil
 }
 
-func IsValidImage(mimeType string) (string, bool) {
+func IsTypeSupportted(mimeType string) (string, bool) {
 
-	isValid := strings.Contains(mimeType, "image/")
-
-	if isValid {
-		return "." + strings.TrimPrefix(mimeType, "image/"), true
+	if !allowedMimes[mimeType] {
+		return "", false
 	}
 
-	return "", false
+	_, after, _ := strings.Cut(mimeType, "/")
+
+	fileExt := "." + after
+
+	return fileExt, true
 }
 
 func SavePrivateFile(fileHeader *multipart.FileHeader, ext string) (string, error) {

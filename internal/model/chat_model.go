@@ -17,3 +17,12 @@ type ChatModel struct {
 	IsRead     bool
 	CreatedAt  time.Time
 }
+
+type ChatAttachment struct {
+	Id        uuid.UUID
+	ChatId    uuid.UUID
+	FileName  string
+	MediaType string
+	Size      int64
+	CreatedAt time.Time
+}

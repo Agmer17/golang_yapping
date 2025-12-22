@@ -2,25 +2,27 @@ package handlers
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/http"
 
-	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/service"
-	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 )
+
+const MaxFileSizes = 5 << 20
 
 type ChatHandler struct {
 	svc service.ChatServiceInterface
 }
 
 type PostChatRequest struct {
-	ReceiverId string  `form:"receiver_id" binding:"required,uuid"`
-	ReplyTo    *string `form:"reply_to" binding:"omitempty,uuid"`
-	ChatText   *string `form:"chat_text"`
-	PostId     *string `form:"posts_id" binding:"omitempty,uuid"`
+	ReceiverId string                  `form:"receiver_id" binding:"required,uuid"`
+	ReplyTo    *string                 `form:"reply_to" binding:"omitempty,uuid"`
+	ChatText   *string                 `form:"chat_text"`
+	PostId     *string                 `form:"posts_id" binding:"omitempty,uuid"`
+	MediaFiles []*multipart.FileHeader `form:"chat_media"`
 }
 
 func NewChatHandler(svc *service.ChatService) *ChatHandler {
@@ -58,102 +60,35 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 		return
 	}
 
-	file, err := c.FormFile("chat_media")
-
-	receiverId, _ := uuid.Parse(pc.ReceiverId)
-	var repTo uuid.UUID
-	var postId uuid.UUID
-
-	if pc.ReplyTo != nil && *pc.ReplyTo != "" {
-		repTo, _ = uuid.Parse(*pc.ReplyTo)
-	}
-
-	if pc.PostId != nil && *pc.PostId != "" {
-		postId, _ = uuid.Parse(*pc.PostId)
-	}
-
-	// ini maksudnya kalo file kosong/gak ada media
-	if err != nil {
-
-		cm := model.ChatModel{
-			SenderId:   currentUser,
-			ReceiverId: receiverId,
-			ReplyTo:    repTo,
-			PostId:     postId,
-
-			ChatText: pc.ChatText,
-		}
-
-		fmt.Println(cm)
-
-		svErr := chat.svc.SaveChat(&cm, c.Request.Context())
-
-		if svErr != nil {
-			c.JSON(svErr.Code, gin.H{
-				"error": svErr.Error(),
+	for _, file := range pc.MediaFiles {
+		if file.Size > MaxFileSizes {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("File %s terlalu besar, maksimal 5MB", file.Filename),
 			})
 			return
 		}
+	}
 
-		c.JSON(http.StatusOK, gin.H{
-			"message": "berhasil",
+	postInput := service.ChatPostInput{
+		SenderId:   currentUser,
+		ReceiverId: pc.ReceiverId,
+		ReplyTo:    pc.ReplyTo,
+		ChatText:   pc.ChatText,
+		MediaFiles: pc.MediaFiles,
+		PostId:     pc.PostId,
+	}
+
+	svcErr := chat.svc.SaveChat(&postInput, c.Request.Context())
+
+	if svcErr != nil {
+		c.JSON(svcErr.Code, gin.H{
+			"error": svcErr.Message,
 		})
-
 		return
-
-	} else {
-		// ini kalo file nya ada
-		mimeType, err := pkg.DetectFileType(file)
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Error saat parsing file : " + err.Error(),
-			})
-			return
-		}
-
-		fileType, ok := pkg.IsValidImage(mimeType)
-
-		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "format file ini di chat belum di dukung",
-			})
-			return
-		}
-
-		fileName, err := pkg.SavePrivateFile(file, fileType)
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "gagal menyimpan file : " + err.Error(),
-			})
-			return
-		}
-
-		cm := model.ChatModel{
-			SenderId:   currentUser,
-			ReceiverId: receiverId,
-			ReplyTo:    repTo,
-			PostId:     postId,
-
-			ChatText:  pc.ChatText,
-			ChatMedia: &fileName,
-		}
-
-		svErr := chat.svc.SaveChat(&cm, c.Request.Context())
-
-		if svErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": svErr.Error(),
-			})
-			return
-
-		}
-
-		c.JSON(200, gin.H{
-			"message": "berhasil mengirim pesan",
-		})
-
 	}
+
+	c.JSON(200, gin.H{
+		"message": "ok",
+	})
 
 }

@@ -40,6 +40,6 @@ type UserMetadata struct {
 
 type PrivateMessageData struct {
 	Message  *string      `json:"text_message" binding:"required"`
-	MediaUrl *string      `json:"media_url"`
+	MediaUrl []string     `json:"media_url"`
 	From     UserMetadata `json:"from"`
 }
