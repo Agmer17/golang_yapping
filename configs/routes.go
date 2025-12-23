@@ -20,6 +20,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 	// ---------------- REPOSITORY ---------------
 	userRepo := repository.NewUserRepo(p)
 	chatRepo := repository.NewChatRepo(p)
+	chatAttachmentRepo := repository.NewChatAttachmentRepo(p)
 	// --------------------------------------------
 
 	// unprotected
@@ -28,7 +29,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client) *gin.Engine {
 
 	// ------------------- service --------------------
 	userService := service.NewUserService(userRepo)
-	chatService := service.NewChatService(chatRepo, hub, userService)
+	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo)
 
 	// --------------------------------------------------
 

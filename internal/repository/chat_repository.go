@@ -7,7 +7,7 @@ import (
 )
 
 type ChatRepositoryInterface interface {
-	Save(d model.ChatModel) error
+	Save(d model.ChatModel) (model.ChatModel, error)
 	GetChatBeetween(r uuid.UUID, s uuid.UUID) ([]model.ChatModel, error)
 	GetLastChat(r uuid.UUID, s uuid.UUID) (model.ChatModel, error)
 	MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error
@@ -24,9 +24,12 @@ func NewChatRepo(pool *pgxpool.Pool) *ChatRepository {
 	}
 }
 
-func (r *ChatRepository) Save(d model.ChatModel) error {
-	// TODO: implement insert chat
-	return nil
+func (r *ChatRepository) Save(d model.ChatModel) (model.ChatModel, error) {
+
+	query := `
+		insert into private_messages(sender_id, receiver_id, reply_to, chat_text, post_id)
+		values($1, $2, $3, $4, $5)
+	`
 }
 
 func (r *ChatRepository) GetChatBeetween(a uuid.UUID, b uuid.UUID) ([]model.ChatModel, error) {

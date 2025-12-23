@@ -31,16 +31,21 @@ type ChatServiceInterface interface {
 }
 
 type ChatService struct {
-	Pool repository.ChatRepositoryInterface
-	Hub  *ws.Hub
-	usv  *UserService
+	Pool    repository.ChatRepositoryInterface
+	Hub     *ws.Hub
+	usv     *UserService
+	chatAtt repository.ChatAttachmentInterface
 }
 
-func NewChatService(c repository.ChatRepositoryInterface, h *ws.Hub, u *UserService) *ChatService {
+func NewChatService(c *repository.ChatRepository,
+	h *ws.Hub,
+	u *UserService,
+	ct *repository.ChatAttachmentRepository) *ChatService {
 	return &ChatService{
-		Pool: c,
-		Hub:  h,
-		usv:  u,
+		Pool:    c,
+		Hub:     h,
+		usv:     u,
+		chatAtt: ct,
 	}
 }
 
@@ -55,16 +60,27 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 
 	}
 
+	cm, err := parseToChatModel(d)
+	if err != nil {
+		return &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Ada kesalahan saat parsing data " + err.Error(),
+		}
+	}
+
+	savedChat, err := cs.Pool.Save(cm)
+
 	if len(d.MediaFiles) != 0 {
 		// todo : olah file nya
-		metadata, svcErr := processAttachment(d.MediaFiles)
+		listMetadata, svcErr := processAttachment(d.MediaFiles, savedChat.Id)
 		if svcErr != nil {
 
 			return svcErr
 		}
-		fmt.Println(metadata)
+		fmt.Println(listMetadata)
 
-		go cs.sendChat(d, metadata)
+		go cs.sendChat(d, listMetadata)
+
 		return nil
 	}
 
@@ -79,14 +95,10 @@ func (cs *ChatService) GetChatBeetween(sender uuid.UUID, receiver uuid.UUID) []m
 
 }
 
-func isPStrEmpty(s *string) bool {
-	return s == nil || *s == ""
-}
-
 func isChatValid(d *ChatPostInput) bool {
-	chatTextEmpty := isPStrEmpty(d.ChatText)
+	chatTextEmpty := pkg.IsPStrEmpty(d.ChatText)
 	chatMediaEmpty := len(d.MediaFiles) == 0
-	postIdEmpty := isPStrEmpty(d.PostId)
+	postIdEmpty := pkg.IsPStrEmpty(d.PostId)
 
 	if chatTextEmpty && chatMediaEmpty && postIdEmpty {
 		return false
@@ -95,14 +107,12 @@ func isChatValid(d *ChatPostInput) bool {
 	return true
 }
 
-func processAttachment(att []*multipart.FileHeader) ([]model.ChatAttachment, *customerrors.ServiceErrors) {
+func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.ChatAttachment, *customerrors.ServiceErrors) {
 
 	var chatAttachments []model.ChatAttachment = make([]model.ChatAttachment, 0)
 
 	for _, v := range att {
-
 		mimeType, err := pkg.DetectFileType(v)
-
 		if err != nil {
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
@@ -113,7 +123,6 @@ func processAttachment(att []*multipart.FileHeader) ([]model.ChatAttachment, *cu
 		ext, ok := pkg.IsTypeSupportted(mimeType)
 
 		if !ok {
-
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusBadRequest,
 				Message: "File saat ini tidak didukung!",
@@ -133,6 +142,8 @@ func processAttachment(att []*multipart.FileHeader) ([]model.ChatAttachment, *cu
 		attObj := model.ChatAttachment{
 			FileName:  fName,
 			MediaType: getMediaType(mimeType),
+			Size:      v.Size,
+			ChatId:    chatId,
 		}
 
 		chatAttachments = append(chatAttachments, attObj)
@@ -180,5 +191,34 @@ func (cs *ChatService) sendChat(d *ChatPostInput, att []model.ChatAttachment) {
 	})
 
 	cs.Hub.SendPayloadTo(receiverRoom, payload)
+
+}
+
+func parseToChatModel(cp *ChatPostInput) (model.ChatModel, error) {
+
+	receiverUuid, err := uuid.Parse(cp.ReceiverId)
+
+	if err != nil {
+		return model.ChatModel{}, err
+	}
+
+	replyTo, err := pkg.StringToUuid(cp.ReplyTo)
+	if err != nil {
+		return model.ChatModel{}, err
+	}
+
+	postId, err := pkg.StringToUuid(cp.PostId)
+	if err != nil {
+		return model.ChatModel{}, err
+	}
+
+	return model.ChatModel{
+		SenderId:   cp.SenderId,
+		ReceiverId: receiverUuid,
+		ReplyTo:    replyTo,
+		ChatText:   cp.ChatText,
+		PostId:     postId,
+		IsRead:     false,
+	}, nil
 
 }

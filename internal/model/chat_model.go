@@ -10,10 +10,9 @@ type ChatModel struct {
 	Id         uuid.UUID
 	SenderId   uuid.UUID
 	ReceiverId uuid.UUID
-	ReplyTo    uuid.UUID
+	ReplyTo    *uuid.UUID
 	ChatText   *string
-	ChatMedia  *string
-	PostId     uuid.UUID
+	PostId     *uuid.UUID
 	IsRead     bool
 	CreatedAt  time.Time
 }
