@@ -23,7 +23,7 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client, svc *serviceConfigs) *gin.Eng
 	server.Use(cors.Default())
 
 	api := server.Group("/api")
-	api.Static("/uploads", "./uploads/public")
+	api.Static("/uploads", svc.FileService.Public)
 
 	authHandler.RegisterRoutes(api)
 

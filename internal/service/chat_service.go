@@ -25,7 +25,7 @@ type ChatPostInput struct {
 
 type ChatServiceInterface interface {
 	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
-	GetChatBeetween(r uuid.UUID, s uuid.UUID) []model.ChatModel
+	GetChatBeetween(r uuid.UUID, s uuid.UUID) ([]model.ChatModel, *customerrors.ServiceErrors)
 }
 
 type ChatService struct {
@@ -101,9 +101,9 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 	return nil
 }
 
-func (cs *ChatService) GetChatBeetween(sender uuid.UUID, receiver uuid.UUID) []model.ChatModel {
+func (cs *ChatService) GetChatBeetween(sender uuid.UUID, receiver uuid.UUID) ([]model.ChatModel, *customerrors.ServiceErrors) {
 
-	return nil
+	return nil, nil
 
 }
 

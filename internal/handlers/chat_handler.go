@@ -36,7 +36,9 @@ func (chat *ChatHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	chatEndpoint := rg.Group("/chat")
 
 	{
-		chatEndpoint.POST("/private-message", chat.PostChat)
+		chatEndpoint.POST("/post-message", chat.PostChat)
+		chatEndpoint.GET("/beetween/:sender/:receiver", chat.GetChatBeetween)
+		chatEndpoint.GET("/attachment/:token", chat.GetChatAttachment)
 	}
 
 }
@@ -89,5 +91,46 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "ok",
 	})
+}
+
+func (chat *ChatHandler) GetChatBeetween(c *gin.Context) {
+
+	senderString := c.Param("sender")
+
+	receiverString := c.Param("receiver")
+
+	senderId, err := uuid.Parse(senderString)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+
+			"error": "parameter tidak valid! harap masukan parameter dengan benar",
+		})
+	}
+
+	receiverId, err := uuid.Parse(receiverString)
+
+	if err != nil {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "parameter tidak valid! harap masukan parameter dengan benar",
+		})
+	}
+
+	data, svcErr := chat.svc.GetChatBeetween(receiverId, senderId)
+	if svcErr != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "chat atau user tidak ditemukan!",
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "berhasil mengambil data!",
+		"data":    data,
+	})
+
+}
+
+func (chat *ChatHandler) GetChatAttachment(c *gin.Context) {
 
 }
