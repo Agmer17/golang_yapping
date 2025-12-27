@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -120,4 +121,38 @@ func SavePrivateFile(fileHeader *multipart.FileHeader, ext string) (string, erro
 	}
 
 	return fileName, nil
+}
+
+func DeletePrivateFile(fname string) {
+
+	deletePath := filepath.Join(mustGetProjectRoot(), "uploads", "private", fname)
+
+	if err := os.Remove(deletePath); err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("failed to remove file %s: %v", deletePath, err)
+		}
+	}
+
+}
+
+func DeleteAllPrivateFile(fNameList []string) {
+	for _, v := range fNameList {
+		DeletePrivateFile(v)
+	}
+
+}
+
+func GetMediaType(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "IMAGE"
+	case strings.HasPrefix(mime, "video/"):
+		return "VIDEO"
+	case strings.HasPrefix(mime, "audio/"):
+		return "AUDIO"
+	case strings.HasPrefix(mime, "application/"):
+		return "DOCUMENT"
+	default:
+		return ""
+	}
 }

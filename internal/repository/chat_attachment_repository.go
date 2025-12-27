@@ -22,14 +22,16 @@ type ChatAttachmentRepository struct {
 }
 
 func NewChatAttachmentRepo(pool *pgxpool.Pool) *ChatAttachmentRepository {
-	return nil
+	return &ChatAttachmentRepository{
+		Pool: pool,
+	}
 
 }
 
 func (c *ChatAttachmentRepository) Save(m model.ChatAttachment, ctx context.Context) error {
 
 	query := `
-		insert into private_messages_attachment(chat_id, filename, media_type, size)
+		insert into private_messages_attachment(chat_id, file_name, media_type, size)
 		values($1, $2, $3, $4)	
 	`
 
@@ -58,7 +60,6 @@ func (c *ChatAttachmentRepository) SaveAll(list []model.ChatAttachment, ctx cont
 	}
 
 	err := pgx.BeginFunc(ctx, c.Pool, func(tx pgx.Tx) error {
-
 		rows := make([][]any, 0, len(list))
 		for _, m := range list {
 			rows = append(rows, []any{
@@ -72,7 +73,7 @@ func (c *ChatAttachmentRepository) SaveAll(list []model.ChatAttachment, ctx cont
 		_, err := tx.CopyFrom(
 			ctx,
 			pgx.Identifier{"private_messages_attachment"},
-			[]string{"chat_id", "filename", "media_type", "size"},
+			[]string{"chat_id", "file_name", "media_type", "size"},
 			pgx.CopyFromRows(rows),
 		)
 

@@ -162,7 +162,8 @@ func (u *UserRepository) GetUserDataById(id uuid.UUID, ctx context.Context) (*mo
 			bio, 
 			profile_picture, 
 			banner_picture, 
-			created_at
+			created_at,
+			activate
 		from users
 		where id = $1
 		limit 1
@@ -182,6 +183,7 @@ func (u *UserRepository) GetUserDataById(id uuid.UUID, ctx context.Context) (*mo
 		&user.ProfilePicture,
 		&user.BannerPicture,
 		&user.CreatedAt,
+		&user.Activate,
 	)
 
 	if err != nil {

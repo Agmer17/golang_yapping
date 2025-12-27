@@ -79,7 +79,6 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 	}
 
 	svcErr := chat.svc.SaveChat(&postInput, c.Request.Context())
-
 	if svcErr != nil {
 		c.JSON(svcErr.Code, gin.H{
 			"error": svcErr.Message,

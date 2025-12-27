@@ -18,4 +18,5 @@ type User struct {
 	ProfilePicture *string
 	BannerPicture  *string
 	CreatedAt      time.Time
+	Activate       bool
 }

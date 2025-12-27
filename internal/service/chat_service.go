@@ -3,10 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"mime/multipart"
 	"net/http"
-	"strings"
 
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
@@ -68,16 +66,28 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 		}
 	}
 
-	savedChat, err := cs.Pool.Save(cm)
+	savedChat, err := cs.Pool.Save(cm, ctx)
+	if err != nil {
+		return &customerrors.ServiceErrors{
+			Code:    http.StatusInternalServerError,
+			Message: "Ada kesalahan saat menyimpan pesan  " + err.Error(),
+		}
+	}
 
 	if len(d.MediaFiles) != 0 {
-		// todo : olah file nya
 		listMetadata, svcErr := processAttachment(d.MediaFiles, savedChat.Id)
 		if svcErr != nil {
-
 			return svcErr
 		}
-		fmt.Println(listMetadata)
+
+		err := cs.chatAtt.SaveAll(listMetadata, ctx)
+		if err != nil {
+			// cleanUpAttachment(listMetadata)
+			return &customerrors.ServiceErrors{
+				Code:    http.StatusInternalServerError,
+				Message: "Gagal saat menyimpan media " + err.Error(),
+			}
+		}
 
 		go cs.sendChat(d, listMetadata)
 
@@ -86,7 +96,6 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 
 	go cs.sendChat(d, []model.ChatAttachment{})
 	return nil
-
 }
 
 func (cs *ChatService) GetChatBeetween(sender uuid.UUID, receiver uuid.UUID) []model.ChatModel {
@@ -114,6 +123,7 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 	for _, v := range att {
 		mimeType, err := pkg.DetectFileType(v)
 		if err != nil {
+			cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
 				Message: "Terjadi kesalahan saat menyimpan file " + err.Error(),
@@ -123,6 +133,7 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 		ext, ok := pkg.IsTypeSupportted(mimeType)
 
 		if !ok {
+			cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusBadRequest,
 				Message: "File saat ini tidak didukung!",
@@ -131,8 +142,8 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 		}
 
 		fName, err := pkg.SavePrivateFile(v, ext)
-
 		if err != nil {
+			cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
 				Message: "Gagal saat menyimpan file  " + err.Error(),
@@ -141,7 +152,7 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 
 		attObj := model.ChatAttachment{
 			FileName:  fName,
-			MediaType: getMediaType(mimeType),
+			MediaType: pkg.GetMediaType(mimeType),
 			Size:      v.Size,
 			ChatId:    chatId,
 		}
@@ -152,21 +163,6 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 
 	return chatAttachments, nil
 
-}
-
-func getMediaType(mime string) string {
-	switch {
-	case strings.HasPrefix(mime, "image/"):
-		return "IMAGE"
-	case strings.HasPrefix(mime, "video/"):
-		return "VIDEO"
-	case strings.HasPrefix(mime, "audio/"):
-		return "AUDIO"
-	case strings.HasPrefix(mime, "application/"):
-		return "DOCUMENT"
-	default:
-		return ""
-	}
 }
 
 func (cs *ChatService) sendChat(d *ChatPostInput, att []model.ChatAttachment) {
@@ -220,5 +216,15 @@ func parseToChatModel(cp *ChatPostInput) (model.ChatModel, error) {
 		PostId:     postId,
 		IsRead:     false,
 	}, nil
+
+}
+
+func cleanUpAttachment(list []model.ChatAttachment) {
+
+	if len(list) > 0 {
+		for _, v := range list {
+			pkg.DeletePrivateFile(v.FileName)
+		}
+	}
 
 }
