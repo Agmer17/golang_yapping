@@ -33,17 +33,20 @@ type ChatService struct {
 	Hub     *ws.Hub
 	usv     *UserService
 	chatAtt repository.ChatAttachmentInterface
+	storage *FileStorage
 }
 
 func NewChatService(c *repository.ChatRepository,
 	h *ws.Hub,
 	u *UserService,
-	ct *repository.ChatAttachmentRepository) *ChatService {
+	ct *repository.ChatAttachmentRepository,
+	fileService *FileStorage) *ChatService {
 	return &ChatService{
 		Pool:    c,
 		Hub:     h,
 		usv:     u,
 		chatAtt: ct,
+		storage: fileService,
 	}
 }
 
@@ -75,14 +78,14 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 	}
 
 	if len(d.MediaFiles) != 0 {
-		listMetadata, svcErr := processAttachment(d.MediaFiles, savedChat.Id)
+		listMetadata, svcErr := cs.processAttachment(d.MediaFiles, savedChat.Id)
 		if svcErr != nil {
 			return svcErr
 		}
 
 		err := cs.chatAtt.SaveAll(listMetadata, ctx)
 		if err != nil {
-			// cleanUpAttachment(listMetadata)
+			cs.cleanUpAttachment(listMetadata)
 			return &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
 				Message: "Gagal saat menyimpan media " + err.Error(),
@@ -116,24 +119,24 @@ func isChatValid(d *ChatPostInput) bool {
 	return true
 }
 
-func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.ChatAttachment, *customerrors.ServiceErrors) {
+func (cs *ChatService) processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.ChatAttachment, *customerrors.ServiceErrors) {
 
 	var chatAttachments []model.ChatAttachment = make([]model.ChatAttachment, 0)
 
 	for _, v := range att {
-		mimeType, err := pkg.DetectFileType(v)
+		mimeType, err := cs.storage.DetectFileType(v)
 		if err != nil {
-			cleanUpAttachment(chatAttachments)
+			cs.cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
 				Message: "Terjadi kesalahan saat menyimpan file " + err.Error(),
 			}
 		}
 
-		ext, ok := pkg.IsTypeSupportted(mimeType)
+		ext, ok := cs.storage.IsTypeSupportted(mimeType)
 
 		if !ok {
-			cleanUpAttachment(chatAttachments)
+			cs.cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusBadRequest,
 				Message: "File saat ini tidak didukung!",
@@ -141,9 +144,9 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 
 		}
 
-		fName, err := pkg.SavePrivateFile(v, ext)
+		fName, err := cs.storage.SavePrivateFile(v, ext, "chat_attachment")
 		if err != nil {
-			cleanUpAttachment(chatAttachments)
+			cs.cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
 				Code:    http.StatusInternalServerError,
 				Message: "Gagal saat menyimpan file  " + err.Error(),
@@ -152,7 +155,7 @@ func processAttachment(att []*multipart.FileHeader, chatId uuid.UUID) ([]model.C
 
 		attObj := model.ChatAttachment{
 			FileName:  fName,
-			MediaType: pkg.GetMediaType(mimeType),
+			MediaType: cs.storage.GetMediaType(mimeType),
 			Size:      v.Size,
 			ChatId:    chatId,
 		}
@@ -219,11 +222,11 @@ func parseToChatModel(cp *ChatPostInput) (model.ChatModel, error) {
 
 }
 
-func cleanUpAttachment(list []model.ChatAttachment) {
+func (cs *ChatService) cleanUpAttachment(list []model.ChatAttachment) {
 
 	if len(list) > 0 {
 		for _, v := range list {
-			pkg.DeletePrivateFile(v.FileName)
+			cs.storage.DeletePrivateFile(v.FileName, "chat_attachment")
 		}
 	}
 

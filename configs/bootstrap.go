@@ -9,9 +9,10 @@ import (
 )
 
 type App struct {
-	DB     *pgxpool.Pool
-	Router *gin.Engine
-	Redis  *redis.Client
+	DB      *pgxpool.Pool
+	Router  *gin.Engine
+	Redis   *redis.Client
+	Service *serviceConfigs
 }
 
 func NewApp(ctx context.Context, dbUrl string, redCtx context.Context, redUrl string) *App {
@@ -24,12 +25,14 @@ func NewApp(ctx context.Context, dbUrl string, redCtx context.Context, redUrl st
 		panic(err)
 	}
 
-	r := SetUpRouter(pool, rdb)
+	svc := NewServiceConfigs(pool, rdb)
+	r := SetUpRouter(pool, rdb, svc)
 
 	return &App{
-		DB:     pool,
-		Router: r,
-		Redis:  rdb,
+		DB:      pool,
+		Router:  r,
+		Redis:   rdb,
+		Service: svc,
 	}
 
 }
