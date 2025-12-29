@@ -27,7 +27,7 @@ func NewServiceConfigs(pool *pgxpool.Pool, r *redis.Client) *serviceConfigs {
 	userService := service.NewUserService(userRepo)
 
 	fileService := service.NewFileService()
-	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService)
+	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService, r)
 
 	return &serviceConfigs{
 		AuthService: authService,

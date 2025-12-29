@@ -15,13 +15,15 @@ type ChatModel struct {
 	PostId     *uuid.UUID
 	IsRead     bool
 	CreatedAt  time.Time
+	IsOwn      bool
+	Attachment []ChatAttachment
 }
 
 type ChatAttachment struct {
-	Id        uuid.UUID
-	ChatId    uuid.UUID
-	FileName  string
-	MediaType string
-	Size      int64
-	CreatedAt time.Time
+	Id        uuid.UUID `json:"id"`
+	ChatId    uuid.UUID `json:"chat_id"`
+	FileName  string    `json:"file_name"`
+	MediaType string    `json:"media_type"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
 }

@@ -37,7 +37,7 @@ func (chat *ChatHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	{
 		chatEndpoint.POST("/post-message", chat.PostChat)
-		chatEndpoint.GET("/beetween/:sender/:receiver", chat.GetChatBeetween)
+		chatEndpoint.GET("/beetween/:receiver", chat.GetChatBeetween)
 		chatEndpoint.GET("/attachment/:token", chat.GetChatAttachment)
 	}
 
@@ -95,18 +95,17 @@ func (chat *ChatHandler) PostChat(c *gin.Context) {
 
 func (chat *ChatHandler) GetChatBeetween(c *gin.Context) {
 
-	senderString := c.Param("sender")
+	val, ok := c.Get("userId")
+	if !ok {
+		c.JSON(401, gin.H{
+			"error": "harap login sebelum mengakses ini!",
+		})
+		return
+	}
 
 	receiverString := c.Param("receiver")
 
-	senderId, err := uuid.Parse(senderString)
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-
-			"error": "parameter tidak valid! harap masukan parameter dengan benar",
-		})
-	}
+	senderId := val.(uuid.UUID)
 
 	receiverId, err := uuid.Parse(receiverString)
 
@@ -117,11 +116,12 @@ func (chat *ChatHandler) GetChatBeetween(c *gin.Context) {
 		})
 	}
 
-	data, svcErr := chat.svc.GetChatBeetween(receiverId, senderId)
+	data, svcErr := chat.svc.GetChatBeetween(c.Request.Context(), receiverId, senderId)
 	if svcErr != nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error": "chat atau user tidak ditemukan!",
+			"error": "chat atau user tidak ditemukan! " + svcErr.Message,
 		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{

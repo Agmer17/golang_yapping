@@ -16,7 +16,6 @@ type ChatAttachmentInterface interface {
 	Delete(chatId uuid.UUID, ctx context.Context) error
 	DeleteAll(chatsId []uuid.UUID, ctx context.Context) error
 }
-
 type ChatAttachmentRepository struct {
 	Pool *pgxpool.Pool
 }

@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"mime/multipart"
 	"net/http"
+	"time"
 
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
@@ -12,8 +14,10 @@ import (
 	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/Agmer17/golang_yapping/pkg/customerrors"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
+// internal struct!
 type ChatPostInput struct {
 	SenderId   uuid.UUID
 	ReceiverId string
@@ -23,30 +27,55 @@ type ChatPostInput struct {
 	MediaFiles []*multipart.FileHeader
 }
 
+// key buat get ini di redis tuh media_access:private_chat:<token>
+type mediaAccessToken struct {
+	Filename string    `redis:"filename"`
+	UserId   uuid.UUID `redis:"user_id"`
+}
+
+type ChatResponseData struct {
+	Id               uuid.UUID  `json:"chat_id"`
+	SenderId         uuid.UUID  `json:"sender_id"`
+	ReceiverId       uuid.UUID  `json:"receiver_id"`
+	ReplyTo          *uuid.UUID `json:"reply_to"`
+	ChatText         *string    `json:"chat_text"`
+	PostId           *uuid.UUID `json:"post_id"`
+	IsRead           bool       `json:"is_read"`
+	CreatedAt        time.Time  `json:"created_at"`
+	IsOwn            bool       `json:"is_own_message"`
+	AttachmentAccess []string   `json:"attachment_access"`
+}
+
+// =======
+
 type ChatServiceInterface interface {
 	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
-	GetChatBeetween(r uuid.UUID, s uuid.UUID) ([]model.ChatModel, *customerrors.ServiceErrors)
+	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors)
+	GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, error)
 }
 
 type ChatService struct {
-	Pool    repository.ChatRepositoryInterface
-	Hub     *ws.Hub
-	usv     *UserService
-	chatAtt repository.ChatAttachmentInterface
-	storage *FileStorage
+	Pool        repository.ChatRepositoryInterface
+	Hub         *ws.Hub
+	usv         *UserService
+	chatAtt     repository.ChatAttachmentInterface
+	storage     *FileStorage
+	RedisClient *redis.Client
 }
 
 func NewChatService(c *repository.ChatRepository,
 	h *ws.Hub,
 	u *UserService,
 	ct *repository.ChatAttachmentRepository,
-	fileService *FileStorage) *ChatService {
+	fileService *FileStorage,
+	redisCli *redis.Client) *ChatService {
 	return &ChatService{
-		Pool:    c,
-		Hub:     h,
-		usv:     u,
-		chatAtt: ct,
-		storage: fileService,
+		Pool:        c,
+		Hub:         h,
+		usv:         u,
+		chatAtt:     ct,
+		storage:     fileService,
+		RedisClient: redisCli,
 	}
 }
 
@@ -101,9 +130,22 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 	return nil
 }
 
-func (cs *ChatService) GetChatBeetween(sender uuid.UUID, receiver uuid.UUID) ([]model.ChatModel, *customerrors.ServiceErrors) {
+func (cs *ChatService) GetChatBeetween(ctx context.Context, sender uuid.UUID, receiver uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors) {
 
-	return nil, nil
+	chatList, err := cs.Pool.GetChatBeetween(ctx, receiver, sender)
+
+	if err != nil {
+		log.Print("terjadi error saat mengambil data di datbase : " + err.Error() + "\n")
+		return nil, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "error " + err.Error(),
+		}
+	}
+
+	// todo buat ini di redis!
+	data, err := cs.setToChatResponse(ctx, &chatList, sender)
+
+	return data, nil
 
 }
 
@@ -229,5 +271,105 @@ func (cs *ChatService) cleanUpAttachment(list []model.ChatAttachment) {
 			cs.storage.DeletePrivateFile(v.FileName, "chat_attachment")
 		}
 	}
+
+}
+
+func (cs *ChatService) GetAttachmentFromToken(ctx context.Context, key string) (mediaAccessToken, error) {
+
+	var token mediaAccessToken
+
+	cmd := cs.RedisClient.HGetAll(ctx, key)
+	if err := cmd.Err(); err != nil {
+		return mediaAccessToken{}, err
+	}
+
+	data := cmd.Val()
+	if len(data) == 0 {
+		return mediaAccessToken{}, &customerrors.ServiceErrors{Code: 400, Message: "token tidak valid atau tidak ditemukan"}
+	}
+
+	scanErr := cmd.Scan(&token)
+
+	if scanErr != nil {
+		return mediaAccessToken{}, scanErr
+	}
+
+	return token, nil
+}
+
+func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAttachment, userId uuid.UUID) ([]string, error) {
+
+	var listTempData []map[string]any
+
+	var tokenList []string
+
+	for _, v := range att {
+		listTempData = append(listTempData, map[string]any{
+			"filename": v.FileName,
+			"user_id":  userId.String(),
+		})
+
+	}
+
+	pipe := cs.RedisClient.Pipeline()
+
+	for _, data := range listTempData {
+		token, err := pkg.GenerateRandomStringToken(16)
+		if err != nil {
+			return nil, err
+		}
+
+		key := "media_access:private_chat:" + token
+
+		pipe.HSet(ctx, key, data)
+
+		pipe.Expire(ctx, key, 45*time.Second)
+
+		tokenList = append(tokenList, token)
+	}
+
+	_, err := pipe.Exec(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tokenList, nil
+}
+
+func (cs *ChatService) setToChatResponse(ctx context.Context, data *[]model.ChatModel, userId uuid.UUID) ([]ChatResponseData, error) {
+
+	var ResponseList []ChatResponseData
+
+	for _, val := range *data {
+
+		tmpResp := ChatResponseData{
+			Id:         val.Id,
+			SenderId:   val.SenderId,
+			ReceiverId: val.ReceiverId,
+			ReplyTo:    val.ReplyTo,
+			ChatText:   val.ChatText,
+			PostId:     val.PostId,
+			IsRead:     val.IsRead,
+			CreatedAt:  val.CreatedAt,
+			IsOwn:      val.IsOwn,
+		}
+
+		if len(val.Attachment) == 0 {
+			tmpResp.AttachmentAccess = []string{}
+		} else {
+			tmpToken, err := cs.setTokenToAccess(ctx, val.Attachment, userId)
+
+			if err != nil {
+				return nil, err
+			}
+
+			tmpResp.AttachmentAccess = tmpToken
+		}
+
+		ResponseList = append(ResponseList, tmpResp)
+	}
+
+	return ResponseList, nil
 
 }
