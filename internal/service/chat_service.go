@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -29,8 +30,9 @@ type ChatPostInput struct {
 
 // key buat get ini di redis tuh media_access:private_chat:<token>
 type mediaAccessToken struct {
-	Filename string    `redis:"filename"`
-	UserId   uuid.UUID `redis:"user_id"`
+	Filename   string    `redis:"filename"`
+	SenderId   uuid.UUID `redis:"sender_id"`
+	ReceiverId uuid.UUID `redis:"receiver_id"`
 }
 
 type ChatResponseData struct {
@@ -51,7 +53,7 @@ type ChatResponseData struct {
 type ChatServiceInterface interface {
 	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
 	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors)
-	GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, error)
+	GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, *customerrors.ServiceErrors)
 }
 
 type ChatService struct {
@@ -121,16 +123,26 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 			}
 		}
 
-		go cs.sendChat(d, listMetadata)
+		savedChat.Attachment = listMetadata
 
+		tokenAcc, err := cs.setTokenToAccess(ctx, savedChat.Attachment, savedChat.SenderId, savedChat.ReceiverId)
+
+		if err != nil {
+			return &customerrors.ServiceErrors{
+				Code:    500,
+				Message: "Terjadi kesalahan di server! " + err.Error(),
+			}
+		}
+
+		go cs.sendChat(savedChat, tokenAcc)
 		return nil
 	}
 
-	go cs.sendChat(d, []model.ChatAttachment{})
+	go cs.sendChat(savedChat, []string{})
 	return nil
 }
 
-func (cs *ChatService) GetChatBeetween(ctx context.Context, sender uuid.UUID, receiver uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors) {
+func (cs *ChatService) GetChatBeetween(ctx context.Context, receiver uuid.UUID, sender uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors) {
 
 	chatList, err := cs.Pool.GetChatBeetween(ctx, receiver, sender)
 
@@ -210,28 +222,27 @@ func (cs *ChatService) processAttachment(att []*multipart.FileHeader, chatId uui
 
 }
 
-func (cs *ChatService) sendChat(d *ChatPostInput, att []model.ChatAttachment) {
-	receiverRoom := "user:" + d.ReceiverId
-	media := []string{}
+func (cs *ChatService) sendChat(savedChat model.ChatModel, attData []string) {
 
-	for _, v := range att {
-		media = append(media, v.FileName)
+	destRoom := "user:" + savedChat.ReceiverId.String()
+
+	pvData := ws.PrivateMessageData{
+		Message:  savedChat.ChatText,
+		MediaUrl: attData,
 	}
 
-	payloadData, _ := json.Marshal(ws.PrivateMessageData{
-		Message:  d.ChatText,
-		MediaUrl: media,
-	})
+	pvDataByte, _ := json.Marshal(pvData)
 
-	// todo ini testing doang
-	payload, _ := json.Marshal(ws.WebsocketEvent{
+	wsEvent := ws.WebsocketEvent{
 		Action: ws.ActionPrivateMessage,
-		Detail: "NEW MESSSAGE ARRIVED",
+		Detail: "NEW MESSAGE ARRIVED",
 		Type:   ws.TypeSystemOk,
-		Data:   payloadData,
-	})
+		Data:   pvDataByte,
+	}
 
-	cs.Hub.SendPayloadTo(receiverRoom, payload)
+	wsEventByte, _ := json.Marshal(wsEvent)
+
+	cs.Hub.SendPayloadTo(destRoom, wsEventByte)
 
 }
 
@@ -274,7 +285,7 @@ func (cs *ChatService) cleanUpAttachment(list []model.ChatAttachment) {
 
 }
 
-func (cs *ChatService) GetAttachmentFromToken(ctx context.Context, key string) (mediaAccessToken, error) {
+func (cs *ChatService) getAttachmentFromToken(ctx context.Context, key string) (mediaAccessToken, error) {
 
 	var token mediaAccessToken
 
@@ -284,8 +295,9 @@ func (cs *ChatService) GetAttachmentFromToken(ctx context.Context, key string) (
 	}
 
 	data := cmd.Val()
+	// fmt.Println("\n\n\n\n\n data val : " + cmd.Val()["filename"] + "tokennya : ")
 	if len(data) == 0 {
-		return mediaAccessToken{}, &customerrors.ServiceErrors{Code: 400, Message: "token tidak valid atau tidak ditemukan"}
+		return mediaAccessToken{}, &customerrors.ServiceErrors{Code: 404, Message: "token tidak valid atau tidak ditemukan"}
 	}
 
 	scanErr := cmd.Scan(&token)
@@ -294,10 +306,12 @@ func (cs *ChatService) GetAttachmentFromToken(ctx context.Context, key string) (
 		return mediaAccessToken{}, scanErr
 	}
 
+	// fmt.Println("\n\n\n\n\n data token : " + token.UserId.String() + "tokennya : ")
+
 	return token, nil
 }
 
-func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAttachment, userId uuid.UUID) ([]string, error) {
+func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAttachment, sender uuid.UUID, receiverId uuid.UUID) ([]string, error) {
 
 	var listTempData []map[string]any
 
@@ -305,8 +319,9 @@ func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAtt
 
 	for _, v := range att {
 		listTempData = append(listTempData, map[string]any{
-			"filename": v.FileName,
-			"user_id":  userId.String(),
+			"filename":    v.FileName,
+			"sender_id":   sender.String(),
+			"receiver_id": receiverId.String(),
 		})
 
 	}
@@ -358,7 +373,7 @@ func (cs *ChatService) setToChatResponse(ctx context.Context, data *[]model.Chat
 		if len(val.Attachment) == 0 {
 			tmpResp.AttachmentAccess = []string{}
 		} else {
-			tmpToken, err := cs.setTokenToAccess(ctx, val.Attachment, userId)
+			tmpToken, err := cs.setTokenToAccess(ctx, val.Attachment, val.SenderId, val.ReceiverId)
 
 			if err != nil {
 				return nil, err
@@ -371,5 +386,34 @@ func (cs *ChatService) setToChatResponse(ctx context.Context, data *[]model.Chat
 	}
 
 	return ResponseList, nil
+
+}
+
+func (cs *ChatService) GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, *customerrors.ServiceErrors) {
+
+	var svcError *customerrors.ServiceErrors
+	mediaAccess, err := cs.getAttachmentFromToken(ctx, key)
+
+	if err != nil {
+		if errors.As(err, &svcError) {
+			return "", svcError
+		} else {
+			return "", &customerrors.ServiceErrors{
+				Code:    500,
+				Message: "internal server error! " + err.Error(),
+			}
+		}
+
+	}
+
+	if mediaAccess.SenderId != userId && mediaAccess.ReceiverId != userId {
+		// fmt.Println("salah user id! harusnya : " + mediaAccess.SenderId.String() + "atau : " + userId.String())
+		return "", &customerrors.ServiceErrors{
+			Code:    401,
+			Message: "Unauthorized access! kamu tidak berhak mengkases file ini!",
+		}
+	}
+
+	return cs.storage.GetPathPrivateFile(mediaAccess.Filename, "chat_attachment"), nil
 
 }

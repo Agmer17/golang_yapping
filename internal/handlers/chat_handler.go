@@ -133,4 +133,27 @@ func (chat *ChatHandler) GetChatBeetween(c *gin.Context) {
 
 func (chat *ChatHandler) GetChatAttachment(c *gin.Context) {
 
+	val, ok := c.Get("userId")
+	if !ok {
+		c.JSON(401, gin.H{
+			"error": "harap login sebelum mengakses ini!",
+		})
+		return
+	}
+
+	currentUser := val.(uuid.UUID)
+	token := c.Param("token")
+	key := "media_access:private_chat:" + token
+
+	// var customErr customerrors.ServiceErrors
+	path, err := chat.svc.GetPrivateAttachmentFile(c.Request.Context(), key, currentUser)
+
+	if err != nil {
+		c.JSON(err.Code, gin.H{
+			"error": err.Message,
+		})
+	}
+
+	c.File(path)
+
 }

@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -172,6 +173,19 @@ func (storage *FileStorage) DeletePrivateFile(fname string, place ...string) {
 			log.Printf("failed to remove file %s: %v", deletePath, err)
 		}
 	}
+
+}
+
+func (storage *FileStorage) GetPathPrivateFile(filename string, place ...string) string {
+
+	parts := []string{
+		storage.Private,
+	}
+
+	parts = append(parts, place...)
+	parts = append(parts, filename)
+
+	return path.Join(parts...)
 
 }
 
