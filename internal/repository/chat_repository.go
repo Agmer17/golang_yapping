@@ -11,10 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type LatestChatQuery struct {
+	ChatData    model.ChatModel
+	PartnerData model.User
+}
+
 type ChatRepositoryInterface interface {
 	Save(d model.ChatModel, ctx context.Context) (model.ChatModel, error)
 	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]model.ChatModel, error)
-	GetLastChat(r uuid.UUID, s uuid.UUID) (model.ChatModel, error)
+	GetLastChat(ctx context.Context, userId uuid.UUID) ([]LatestChatQuery, error)
 	MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error
 	Delete(id uuid.UUID) error
 }
@@ -159,9 +164,113 @@ func (r *ChatRepository) GetChatBeetween(
 	return chats, nil
 }
 
-func (r *ChatRepository) GetLastChat(a uuid.UUID, b uuid.UUID) (model.ChatModel, error) {
-	// TODO: implement get last chat between user A and B
-	return model.ChatModel{}, nil
+func (r *ChatRepository) GetLastChat(ctx context.Context, userID uuid.UUID) ([]LatestChatQuery, error) {
+	query := `
+		SELECT DISTINCT ON (chat_partner_id)
+			pm.id                          AS chat_id,
+			pm.sender_id,
+			pm.receiver_id,
+			pm.reply_to,
+			pm.chat_text,
+			pm.post_id,
+			pm.is_read,
+			pm.created_at AT TIME ZONE 'UTC' AS created_at,
+
+			(pm.sender_id = $1)            AS is_own,
+
+			-- partner
+			chat_partner_id                AS partner_id,
+			u.full_name                    AS partner_fullname,
+			u.username                     AS partner_username,
+			u.profile_picture              AS partner_profile_picture,
+
+			-- attachments as JSON
+			COALESCE(
+				(
+					SELECT json_agg(
+						json_build_object(
+							'id', pma.id,
+							'chat_id', pma.chat_id,
+							'file_name', pma.file_name,
+							'media_type', pma.media_type,
+							'size', pma.size,
+							'created_at', pma.created_at AT TIME ZONE 'UTC'
+						)
+					)
+					FROM private_messages_attachment pma
+					WHERE pma.chat_id = pm.id
+				),
+				'[]'::json
+			) AS attachments
+
+		FROM (
+			SELECT
+				pm.*,
+				CASE
+					WHEN pm.sender_id = $1 THEN pm.receiver_id
+					ELSE pm.sender_id
+				END AS chat_partner_id
+			FROM private_messages pm
+			WHERE
+				pm.sender_id = $1
+				OR pm.receiver_id = $1
+		) pm
+		JOIN users u ON u.id = pm.chat_partner_id
+		ORDER BY chat_partner_id, pm.created_at DESC;
+	`
+
+	rows, err := r.Pool.Query(ctx, query, userID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var queryData []LatestChatQuery = make([]LatestChatQuery, 0)
+
+	for rows.Next() {
+
+		var chatData model.ChatModel
+		var partnerData model.User
+		var rawAttachments json.RawMessage
+
+		err := rows.Scan(
+			&chatData.Id,
+			&chatData.SenderId,
+			&chatData.ReceiverId,
+			&chatData.ReplyTo,
+			&chatData.ChatText,
+			&chatData.PostId,
+			&chatData.IsRead,
+			&chatData.CreatedAt,
+			&chatData.IsOwn,
+
+			&partnerData.Id,
+			&partnerData.FullName,
+			&partnerData.Username,
+			&partnerData.ProfilePicture,
+
+			&rawAttachments,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		var attachments []model.ChatAttachment
+		if err := json.Unmarshal(rawAttachments, &attachments); err != nil {
+			return nil, err
+		}
+
+		chatData.Attachment = attachments
+		queryData = append(queryData, LatestChatQuery{
+			ChatData:    chatData,
+			PartnerData: partnerData,
+		})
+	}
+
+	return queryData, nil
+
 }
 
 func (r *ChatRepository) MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error {

@@ -39,6 +39,7 @@ func (chat *ChatHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		chatEndpoint.POST("/post-message", chat.PostChat)
 		chatEndpoint.GET("/beetween/:receiver", chat.GetChatBeetween)
 		chatEndpoint.GET("/attachment/:token", chat.GetChatAttachment)
+		chatEndpoint.GET("/latest", chat.GetLatestChat)
 	}
 
 }
@@ -155,5 +156,32 @@ func (chat *ChatHandler) GetChatAttachment(c *gin.Context) {
 	}
 
 	c.File(path)
+
+}
+
+func (chat *ChatHandler) GetLatestChat(c *gin.Context) {
+
+	val, ok := c.Get("userId")
+	if !ok {
+		c.JSON(401, gin.H{
+			"error": "harap login sebelum mengakses ini!",
+		})
+		return
+	}
+
+	currentUser := val.(uuid.UUID)
+
+	data, err := chat.svc.GetLatestChat(c.Request.Context(), currentUser)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "terjadi kesalahan di database " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": data,
+	})
 
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -48,12 +49,21 @@ type ChatResponseData struct {
 	AttachmentAccess []string   `json:"attachment_access"`
 }
 
+type LatestChatData struct {
+	ChatResponseData      `json:"chat_data"`
+	ChatPartnerId         uuid.UUID `json:"partner_id"`
+	ChatPartnerFullName   string    `json:"partner_fullname"`
+	ChatPartnerUsername   string    `json:"partner_username"`
+	ChatPartnerProfilePic *string   `json:"partner_profile_picture"`
+}
+
 // =======
 
 type ChatServiceInterface interface {
 	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
 	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors)
 	GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, *customerrors.ServiceErrors)
+	GetLatestChat(ctx context.Context, userId uuid.UUID) (LatestChatData, *customerrors.ServiceErrors)
 }
 
 type ChatService struct {
@@ -306,8 +316,6 @@ func (cs *ChatService) getAttachmentFromToken(ctx context.Context, key string) (
 		return mediaAccessToken{}, scanErr
 	}
 
-	// fmt.Println("\n\n\n\n\n data token : " + token.UserId.String() + "tokennya : ")
-
 	return token, nil
 }
 
@@ -407,7 +415,6 @@ func (cs *ChatService) GetPrivateAttachmentFile(ctx context.Context, key string,
 	}
 
 	if mediaAccess.SenderId != userId && mediaAccess.ReceiverId != userId {
-		// fmt.Println("salah user id! harusnya : " + mediaAccess.SenderId.String() + "atau : " + userId.String())
 		return "", &customerrors.ServiceErrors{
 			Code:    401,
 			Message: "Unauthorized access! kamu tidak berhak mengkases file ini!",
@@ -416,4 +423,20 @@ func (cs *ChatService) GetPrivateAttachmentFile(ctx context.Context, key string,
 
 	return cs.storage.GetPathPrivateFile(mediaAccess.Filename, "chat_attachment"), nil
 
+}
+
+func (cs *ChatService) GetLatestChat(ctx context.Context, userId uuid.UUID) (LatestChatData, *customerrors.ServiceErrors) {
+
+	data, err := cs.Pool.GetLastChat(ctx, userId)
+
+	if err != nil {
+		return LatestChatData{}, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: err.Error(),
+		}
+	}
+
+	fmt.Println(data)
+
+	return LatestChatData{}, nil
 }
