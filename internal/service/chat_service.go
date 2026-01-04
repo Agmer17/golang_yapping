@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -63,7 +63,8 @@ type ChatServiceInterface interface {
 	SaveChat(m *ChatPostInput, ctx context.Context) *customerrors.ServiceErrors
 	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]ChatResponseData, *customerrors.ServiceErrors)
 	GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, *customerrors.ServiceErrors)
-	GetLatestChat(ctx context.Context, userId uuid.UUID) (LatestChatData, *customerrors.ServiceErrors)
+	GetLatestChat(ctx context.Context, userId uuid.UUID) ([]LatestChatData, *customerrors.ServiceErrors)
+	DeleteChat(ctx context.Context, userId uuid.UUID, chatId uuid.UUID) *customerrors.ServiceErrors
 }
 
 type ChatService struct {
@@ -165,7 +166,7 @@ func (cs *ChatService) GetChatBeetween(ctx context.Context, receiver uuid.UUID, 
 	}
 
 	// todo buat ini di redis!
-	data, err := cs.setToChatResponse(ctx, &chatList, sender)
+	data, err := cs.setToChatResponses(ctx, chatList, sender)
 
 	return data, nil
 
@@ -360,11 +361,11 @@ func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAtt
 	return tokenList, nil
 }
 
-func (cs *ChatService) setToChatResponse(ctx context.Context, data *[]model.ChatModel, userId uuid.UUID) ([]ChatResponseData, error) {
+func (cs *ChatService) setToChatResponses(ctx context.Context, data []model.ChatModel, userId uuid.UUID) ([]ChatResponseData, error) {
 
 	var ResponseList []ChatResponseData
 
-	for _, val := range *data {
+	for _, val := range data {
 
 		tmpResp := ChatResponseData{
 			Id:         val.Id,
@@ -397,6 +398,36 @@ func (cs *ChatService) setToChatResponse(ctx context.Context, data *[]model.Chat
 
 }
 
+func (cs *ChatService) setOneToChatResponse(ctx context.Context, data model.ChatModel, userId uuid.UUID) (ChatResponseData, error) {
+
+	tmpResp := ChatResponseData{
+		Id:         data.Id,
+		SenderId:   data.SenderId,
+		ReceiverId: data.ReceiverId,
+		ReplyTo:    data.ReplyTo,
+		ChatText:   data.ChatText,
+		PostId:     data.PostId,
+		IsRead:     data.IsRead,
+		CreatedAt:  data.CreatedAt,
+		IsOwn:      data.IsOwn,
+	}
+
+	if len(data.Attachment) == 0 {
+		tmpResp.AttachmentAccess = []string{}
+	} else {
+		tmpToken, err := cs.setTokenToAccess(ctx, data.Attachment, data.SenderId, data.ReceiverId)
+
+		if err != nil {
+			return ChatResponseData{}, err
+		}
+
+		tmpResp.AttachmentAccess = tmpToken
+	}
+
+	return tmpResp, nil
+
+}
+
 func (cs *ChatService) GetPrivateAttachmentFile(ctx context.Context, key string, userId uuid.UUID) (string, *customerrors.ServiceErrors) {
 
 	var svcError *customerrors.ServiceErrors
@@ -425,18 +456,81 @@ func (cs *ChatService) GetPrivateAttachmentFile(ctx context.Context, key string,
 
 }
 
-func (cs *ChatService) GetLatestChat(ctx context.Context, userId uuid.UUID) (LatestChatData, *customerrors.ServiceErrors) {
+func (cs *ChatService) GetLatestChat(ctx context.Context, userId uuid.UUID) ([]LatestChatData, *customerrors.ServiceErrors) {
 
 	data, err := cs.Pool.GetLastChat(ctx, userId)
-
 	if err != nil {
-		return LatestChatData{}, &customerrors.ServiceErrors{
+		return []LatestChatData{}, &customerrors.ServiceErrors{
 			Code:    500,
 			Message: err.Error(),
 		}
 	}
 
-	fmt.Println(data)
+	// fmt.Println(data)
+	var LatestChats []LatestChatData = make([]LatestChatData, 0)
+	for _, v := range data {
+		tmpChatResp, err := cs.setOneToChatResponse(ctx, v.ChatData, userId)
 
-	return LatestChatData{}, nil
+		if err != nil {
+			return nil, &customerrors.ServiceErrors{
+				Code:    500,
+				Message: "Gagal saat mengambil data dari database " + err.Error(),
+			}
+		}
+
+		tmpRespData := LatestChatData{
+			ChatResponseData:      tmpChatResp,
+			ChatPartnerId:         v.PartnerData.Id,
+			ChatPartnerFullName:   v.PartnerData.FullName,
+			ChatPartnerUsername:   v.PartnerData.Username,
+			ChatPartnerProfilePic: v.PartnerData.ProfilePicture,
+		}
+
+		LatestChats = append(LatestChats, tmpRespData)
+
+	}
+
+	return LatestChats, nil
+}
+
+func (cs *ChatService) DeleteChat(ctx context.Context, userId uuid.UUID, chatId uuid.UUID) *customerrors.ServiceErrors {
+
+	chatMetaData, err := cs.Pool.GetChatById(ctx, chatId)
+
+	if err != nil {
+
+		if err == sql.ErrNoRows {
+
+			return &customerrors.ServiceErrors{
+				Code:    404,
+				Message: "Chat tidak ditemukan!",
+			}
+		} else {
+			return &customerrors.ServiceErrors{
+				Code:    500,
+				Message: "Gagal mengahpus data di database " + err.Error(),
+			}
+		}
+
+	}
+
+	if chatMetaData.SenderId != userId {
+		return &customerrors.ServiceErrors{
+			Code:    401,
+			Message: "Kamu tidak bisa menghapus pesan ini!",
+		}
+	}
+
+	filesToDelete, err := cs.Pool.Delete(ctx, chatId)
+
+	if err != nil {
+		return &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "gagal menghapus chat " + err.Error(),
+		}
+	}
+
+	cs.storage.DeleteAllPrivateFile(filesToDelete, "chat_attachment")
+	return nil
+
 }

@@ -21,7 +21,8 @@ type ChatRepositoryInterface interface {
 	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]model.ChatModel, error)
 	GetLastChat(ctx context.Context, userId uuid.UUID) ([]LatestChatQuery, error)
 	MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error
-	Delete(id uuid.UUID) error
+	GetChatById(ctx context.Context, chatId uuid.UUID) (model.ChatModel, error)
+	Delete(ctx context.Context, id uuid.UUID) ([]string, error)
 }
 
 type Attachment struct {
@@ -278,7 +279,89 @@ func (r *ChatRepository) MarkConversationAsRead(sender uuid.UUID, receiver uuid.
 	return nil
 }
 
-func (r *ChatRepository) Delete(id uuid.UUID) error {
+func (r *ChatRepository) GetChatById(ctx context.Context, chatId uuid.UUID) (model.ChatModel, error) {
+
+	query := `
+	select 
+		pm.id,
+		pm.sender_id,
+		pm.receiver_id,
+		pm.reply_to,
+		pm.chat_text,
+		pm.post_id,
+		pm.is_read,
+		pm.created_at 
+	from private_messages pm
+	where pm.id = $1; 
+	`
+	var tmpData model.ChatModel
+
+	row := r.Pool.QueryRow(ctx, query, chatId)
+
+	err := row.Scan(
+		&tmpData.Id,
+		&tmpData.SenderId,
+		&tmpData.ReceiverId,
+		&tmpData.ReplyTo,
+		&tmpData.ChatText,
+		&tmpData.PostId,
+		&tmpData.IsRead,
+		&tmpData.CreatedAt,
+	)
+
+	if err != nil {
+		return model.ChatModel{}, err
+	}
+
+	return tmpData, nil
+
+}
+
+func (r *ChatRepository) Delete(ctx context.Context, id uuid.UUID) ([]string, error) {
 	// TODO: implement delete chat by ID
-	return nil
+	query := `
+	WITH deleted_files AS (
+		DELETE FROM private_messages_attachment
+		WHERE chat_id = $1
+		RETURNING file_name
+	),
+	delete_chat AS (
+		DELETE FROM private_messages
+		WHERE id = $1
+	)
+	SELECT file_name FROM deleted_files;
+	`
+
+	var filesToDelete []string = make([]string, 0)
+
+	err := pgx.BeginFunc(ctx, r.Pool, func(tx pgx.Tx) error {
+
+		rows, err := r.Pool.Query(ctx, query, id)
+
+		if err != nil {
+			return err
+		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			var fname string
+			if err := rows.Scan(&fname); err != nil {
+				return err
+			}
+
+			filesToDelete = append(filesToDelete, fname)
+		}
+
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return filesToDelete, nil
 }

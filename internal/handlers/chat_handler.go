@@ -40,6 +40,7 @@ func (chat *ChatHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		chatEndpoint.GET("/beetween/:receiver", chat.GetChatBeetween)
 		chatEndpoint.GET("/attachment/:token", chat.GetChatAttachment)
 		chatEndpoint.GET("/latest", chat.GetLatestChat)
+		chatEndpoint.DELETE("/delete/:chatId", chat.DeleteChat)
 	}
 
 }
@@ -182,6 +183,38 @@ func (chat *ChatHandler) GetLatestChat(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": data,
+	})
+
+}
+
+func (chat *ChatHandler) DeleteChat(c *gin.Context) {
+
+	val, ok := c.Get("userId")
+	if !ok {
+		c.JSON(401, gin.H{
+			"error": "harap login sebelum mengakses ini!",
+		})
+		return
+	}
+	userId := val.(uuid.UUID)
+
+	chatIdStr := c.Param("chatId")
+
+	ChatId, _ := uuid.Parse(chatIdStr)
+
+	fmt.Println("ini chatId" + ChatId.String())
+
+	err := chat.svc.DeleteChat(c.Request.Context(), userId, ChatId)
+
+	if err != nil {
+		c.JSON(err.Code, gin.H{
+			"error": err.Message,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "berhasil menghapus pesan",
 	})
 
 }

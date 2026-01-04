@@ -189,9 +189,9 @@ func (storage *FileStorage) GetPathPrivateFile(filename string, place ...string)
 
 }
 
-func (storage *FileStorage) DeleteAllPrivateFile(fNameList []string) {
+func (storage *FileStorage) DeleteAllPrivateFile(fNameList []string, place ...string) {
 	for _, v := range fNameList {
-		storage.DeletePrivateFile(v)
+		storage.DeletePrivateFile(v, place...)
 	}
 
 }
