@@ -15,21 +15,24 @@ type LatestChatQuery struct {
 	ChatData    model.ChatModel
 	PartnerData model.User
 }
-
-type ChatRepositoryInterface interface {
-	Save(d model.ChatModel, ctx context.Context) (model.ChatModel, error)
-	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]model.ChatModel, error)
-	GetLastChat(ctx context.Context, userId uuid.UUID) ([]LatestChatQuery, error)
-	MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error
-	GetChatById(ctx context.Context, chatId uuid.UUID) (model.ChatModel, error)
-	Delete(ctx context.Context, id uuid.UUID) ([]string, error)
-}
-
 type Attachment struct {
 	Filename  string    `json:"file_name"`
 	MediaType string    `json:"media_type"`
 	Size      int64     `json:"size"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type ChatWithSender struct {
+	ChatData model.ChatModel
+	Sender   model.User
+}
+type ChatRepositoryInterface interface {
+	Save(d model.ChatModel, ctx context.Context) (ChatWithSender, error)
+	GetChatBeetween(ctx context.Context, r uuid.UUID, s uuid.UUID) ([]model.ChatModel, error)
+	GetLastChat(ctx context.Context, userId uuid.UUID) ([]LatestChatQuery, error)
+	MarkConversationAsRead(sender uuid.UUID, receiver uuid.UUID) error
+	GetChatById(ctx context.Context, chatId uuid.UUID) (model.ChatModel, error)
+	Delete(ctx context.Context, id uuid.UUID) ([]string, error)
 }
 
 type ChatRepository struct {
@@ -42,36 +45,72 @@ func NewChatRepo(pool *pgxpool.Pool) *ChatRepository {
 	}
 }
 
-func (r *ChatRepository) Save(d model.ChatModel, ctx context.Context) (model.ChatModel, error) {
+func (r *ChatRepository) Save(
+	d model.ChatModel,
+	ctx context.Context,
+) (ChatWithSender, error) {
 
 	query := `
+	WITH inserted_message AS (
 		INSERT INTO private_messages
 			(sender_id, receiver_id, reply_to, chat_text, post_id)
 		VALUES
 			($1, $2, $3, $4, $5)
 		RETURNING
-			id, sender_id, receiver_id, reply_to, chat_text, post_id, is_read, created_at
+			id,
+			sender_id,
+			receiver_id,
+			reply_to,
+			chat_text,
+			post_id,
+			is_read,
+			created_at
+	)
+	SELECT
+		im.id,
+		im.sender_id,
+		im.receiver_id,
+		im.reply_to,
+		im.chat_text,
+		im.post_id,
+		im.is_read,
+		im.created_at,
+
+		u.id,
+		u.username,
+		u.full_name,
+		u.profile_picture
+	FROM inserted_message im
+	JOIN users u ON u.id = im.sender_id
 	`
 
-	var result model.ChatModel
+	var result ChatWithSender
 
 	err := pgx.BeginFunc(ctx, r.Pool, func(tx pgx.Tx) error {
-
-		return tx.QueryRow(ctx,
-			query, d.SenderId,
+		return tx.QueryRow(
+			ctx,
+			query,
+			d.SenderId,
 			d.ReceiverId,
 			d.ReplyTo,
 			d.ChatText,
 			d.PostId,
 		).Scan(
-			&result.Id,
-			&result.SenderId,
-			&result.ReceiverId,
-			&result.ReplyTo,
-			&result.ChatText,
-			&result.PostId,
-			&result.IsRead,
-			&result.CreatedAt,
+			// chat
+			&result.ChatData.Id,
+			&result.ChatData.SenderId,
+			&result.ChatData.ReceiverId,
+			&result.ChatData.ReplyTo,
+			&result.ChatData.ChatText,
+			&result.ChatData.PostId,
+			&result.ChatData.IsRead,
+			&result.ChatData.CreatedAt,
+
+			// sender
+			&result.Sender.Id,
+			&result.Sender.Username,
+			&result.Sender.FullName,
+			&result.Sender.ProfilePicture,
 		)
 	})
 

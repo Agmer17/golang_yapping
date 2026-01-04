@@ -2,6 +2,8 @@ package ws
 
 import (
 	"encoding/json"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -33,9 +35,10 @@ type JoinRoomEventData struct {
 // user metadata
 
 type UserMetadata struct {
-	Username       string
-	FullName       string
-	ProfilePicture *string
+	Id             uuid.UUID `json:"id"`
+	Username       string    `json:"username"`
+	FullName       string    `json:"full_name"`
+	ProfilePicture *string   `json:"profile_picture"`
 }
 
 type PrivateMessageData struct {

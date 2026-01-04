@@ -120,7 +120,7 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 	}
 
 	if len(d.MediaFiles) != 0 {
-		listMetadata, svcErr := cs.processAttachment(d.MediaFiles, savedChat.Id)
+		listMetadata, svcErr := cs.processAttachment(d.MediaFiles, savedChat.ChatData.Id)
 		if svcErr != nil {
 			return svcErr
 		}
@@ -134,9 +134,9 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 			}
 		}
 
-		savedChat.Attachment = listMetadata
+		savedChat.ChatData.Attachment = listMetadata
 
-		tokenAcc, err := cs.setTokenToAccess(ctx, savedChat.Attachment, savedChat.SenderId, savedChat.ReceiverId)
+		tokenAcc, err := cs.setTokenToAccess(ctx, savedChat.ChatData.Attachment, savedChat.ChatData.SenderId, savedChat.ChatData.ReceiverId)
 
 		if err != nil {
 			return &customerrors.ServiceErrors{
@@ -145,11 +145,11 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 			}
 		}
 
-		go cs.sendChat(savedChat, tokenAcc)
+		cs.sendChat(ctx, savedChat, tokenAcc)
 		return nil
 	}
 
-	go cs.sendChat(savedChat, []string{})
+	cs.sendChat(ctx, savedChat, []string{})
 	return nil
 }
 
@@ -233,13 +233,21 @@ func (cs *ChatService) processAttachment(att []*multipart.FileHeader, chatId uui
 
 }
 
-func (cs *ChatService) sendChat(savedChat model.ChatModel, attData []string) {
+func (cs *ChatService) sendChat(ctx context.Context, savedChat repository.ChatWithSender, attData []string) {
 
-	destRoom := "user:" + savedChat.ReceiverId.String()
+	destRoom := "user:" + savedChat.ChatData.ReceiverId.String()
+	senderDestRoom := "user:" + savedChat.ChatData.SenderId.String()
 
 	pvData := ws.PrivateMessageData{
-		Message:  savedChat.ChatText,
+		Message:  savedChat.ChatData.ChatText,
 		MediaUrl: attData,
+	}
+
+	pvData.From = ws.UserMetadata{
+		Id:             savedChat.Sender.Id,
+		Username:       savedChat.Sender.Username,
+		FullName:       savedChat.Sender.FullName,
+		ProfilePicture: savedChat.Sender.ProfilePicture,
 	}
 
 	pvDataByte, _ := json.Marshal(pvData)
@@ -254,6 +262,7 @@ func (cs *ChatService) sendChat(savedChat model.ChatModel, attData []string) {
 	wsEventByte, _ := json.Marshal(wsEvent)
 
 	cs.Hub.SendPayloadTo(destRoom, wsEventByte)
+	cs.Hub.SendPayloadTo(senderDestRoom, wsEventByte)
 
 }
 
