@@ -21,10 +21,15 @@ func main() {
 
 	pkg.JwtInit(jwtSecret)
 
+	// email
+	emailConfig := os.Getenv("EMAIL_CONFIG")
+	emailPassword := os.Getenv("EMAIL_PASSWORD")
+
 	ctx := context.Background()
 	redCtx := context.Background()
+	eventContext := context.Background()
 
-	app := configs.NewApp(ctx, dbUrl, redCtx, redisUrl)
+	app := configs.NewApp(ctx, dbUrl, redCtx, redisUrl, eventContext, emailConfig, emailPassword)
 
 	defer app.Shutdown()
 

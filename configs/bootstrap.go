@@ -15,7 +15,15 @@ type App struct {
 	Service *serviceConfigs
 }
 
-func NewApp(ctx context.Context, dbUrl string, redCtx context.Context, redUrl string) *App {
+func NewApp(
+	ctx context.Context,
+	dbUrl string,
+	redCtx context.Context,
+	redUrl string,
+	EventContext context.Context,
+	EmailSmtp string,
+	EmailPassword string,
+) *App {
 
 	pool, err := SetUpDatabase(ctx, dbUrl)
 
@@ -25,7 +33,7 @@ func NewApp(ctx context.Context, dbUrl string, redCtx context.Context, redUrl st
 		panic(err)
 	}
 
-	svc := NewServiceConfigs(pool, rdb)
+	svc := NewServiceConfigs(pool, rdb, EmailSmtp, EmailPassword, EventContext)
 	r := SetUpRouter(pool, rdb, svc)
 
 	return &App{
