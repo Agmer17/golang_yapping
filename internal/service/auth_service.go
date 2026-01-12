@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Agmer17/golang_yapping/internal/event"
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/pkg"
@@ -27,12 +28,14 @@ type AuthServiceInterface interface {
 type AuthService struct {
 	UserRepo    repository.UserRepositoryInterface
 	RedisClient *redis.Client
+	bus         *event.EventBus
 }
 
-func NewAuthService(repo *repository.UserRepository, redclient *redis.Client) *AuthService {
+func NewAuthService(repo *repository.UserRepository, redclient *redis.Client, bus *event.EventBus) *AuthService {
 	return &AuthService{
 		UserRepo:    repo,
 		RedisClient: redclient,
+		bus:         bus,
 	}
 }
 
@@ -155,6 +158,12 @@ func (a *AuthService) SignUp(username string, email string, fullName string, pas
 			Message: err.Error(),
 		}
 	}
+
+	a.bus.Publish(event.NewUserCreated, event.NewUserEvent{
+		Email:          data.Email,
+		Username:       data.Username,
+		ActivationLink: "TEST AKTIVASI EMAIL MASSS",
+	})
 
 	return ResponseSchema{
 		"message":    "berhasil membuat akun",

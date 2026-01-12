@@ -5,21 +5,25 @@ import (
 	"sync"
 
 	"github.com/Agmer17/golang_yapping/internal/ws"
+	"github.com/Agmer17/golang_yapping/pkg"
 )
 
 type EventHandler func(rootCtx context.Context, payload interface{})
 
 type EventBus struct {
-	muSubs     sync.RWMutex
-	subs       map[string][]EventHandler
-	Hub        *ws.Hub
-	busContext context.Context
+	muSubs       sync.RWMutex
+	subs         map[string][]EventHandler
+	Hub          *ws.Hub
+	busContext   context.Context
+	EmailService *pkg.MailSender
 }
 
-func NewEventBus(hub *ws.Hub, eventContext context.Context) *EventBus {
+func NewEventBus(hub *ws.Hub, eventContext context.Context, emailSender *pkg.MailSender) *EventBus {
 	return &EventBus{
-		Hub:        hub,
-		busContext: eventContext,
+		Hub:          hub,
+		busContext:   eventContext,
+		subs:         make(map[string][]EventHandler),
+		EmailService: emailSender,
 	}
 
 }

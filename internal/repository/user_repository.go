@@ -183,7 +183,7 @@ func (u *UserRepository) GetUserDataById(id uuid.UUID, ctx context.Context) (*mo
 		&user.ProfilePicture,
 		&user.BannerPicture,
 		&user.CreatedAt,
-		&user.Activate,
+		&user.IsActivate,
 	)
 
 	if err != nil {

@@ -1,5 +1,7 @@
 package event
 
-func SetupEvent(bus *EventBus) {
+const NewUserCreated = "user.created"
 
+func SetupEvent(bus *EventBus) {
+	bus.Subscribe(NewUserCreated, SendVerificationEmail(bus.EmailService))
 }

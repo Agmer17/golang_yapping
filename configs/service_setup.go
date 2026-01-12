@@ -7,6 +7,7 @@ import (
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/internal/service"
 	"github.com/Agmer17/golang_yapping/internal/ws"
+	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -18,7 +19,7 @@ type serviceConfigs struct {
 	FileService *service.FileStorage
 	Hub         *ws.Hub
 
-	EmailService *service.EmailService
+	EmailService *pkg.MailSender
 
 	// event
 	EventBus *event.EventBus
@@ -37,23 +38,30 @@ func NewServiceConfigs(
 	chatRepo := repository.NewChatRepo(pool)
 	chatAttachmentRepo := repository.NewChatAttachmentRepo(pool)
 
-	authService := service.NewAuthService(userRepo, r)
-	userService := service.NewUserService(userRepo)
+	// email sender
+	emailService, err := pkg.NewMailSender(email, emailPw)
 
-	fileService := service.NewFileService()
-	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService, r)
-
-	emailService := service.NewEmailService(email, emailPw)
+	// harus panik soalnya pasti salah konfigurasi antara di email atau app password
+	if err != nil {
+		panic(err)
+	}
 
 	// fmt.Println("======================================================")
 	// fmt.Println(email)
 	// fmt.Println(emailPw)
 	// fmt.Println("======================================================")
 
-	eventBus := event.NewEventBus(hub, eventContext)
+	// event bus backgorund job
+	eventBus := event.NewEventBus(hub, eventContext, emailService)
 
 	// setup event bus disini!
 	event.SetupEvent(eventBus)
+
+	authService := service.NewAuthService(userRepo, r, eventBus)
+	userService := service.NewUserService(userRepo)
+
+	fileService := service.NewFileService()
+	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService, r)
 
 	return &serviceConfigs{
 		AuthService:  authService,
