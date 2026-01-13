@@ -21,7 +21,7 @@ type ResponseSchema map[string]any
 
 type AuthServiceInterface interface {
 	LoginService(string, string, context.Context) (ResponseSchema, *customerrors.ServiceErrors)
-	SignUp(username string, email string, fullName string, password string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
+	SignUp(username, email, fullName, password, host string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
 	RefreshSession(token string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors)
 }
 
@@ -93,6 +93,13 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 		}
 	}
 
+	if !data.IsActivate {
+		return ResponseSchema{}, &customerrors.ServiceErrors{
+			Code:    401,
+			Message: "Akun kamu belum terverifikasi, silahkan cek email untuk melakukan verifikasi terlebih dahulu",
+		}
+	}
+
 	err = bcrypt.CompareHashAndPassword([]byte(data.Password), []byte(pw))
 
 	if err != nil {
@@ -123,7 +130,7 @@ func (a *AuthService) LoginService(username string, pw string, ctx context.Conte
 
 }
 
-func (a *AuthService) SignUp(username string, email string, fullName string, password string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
+func (a *AuthService) SignUp(username string, email string, fullName string, password string, host string, c context.Context) (ResponseSchema, *customerrors.ServiceErrors) {
 
 	var newUser model.User
 
@@ -159,14 +166,27 @@ func (a *AuthService) SignUp(username string, email string, fullName string, pas
 		}
 	}
 
+	activationToken, err := pkg.GenerateRandomStringToken(24)
+
+	if err != nil {
+		return ResponseSchema{}, &customerrors.ServiceErrors{
+			Code:    500,
+			Message: "Terjadi kesalahan di server " + err.Error(),
+		}
+	}
+
+	activationLink := host + "/activate-account/" + activationToken
+
+	// todo impl save token ke db
+
 	a.bus.Publish(event.NewUserCreated, event.NewUserEvent{
 		Email:          data.Email,
 		Username:       data.Username,
-		ActivationLink: "TEST AKTIVASI EMAIL MASSS",
+		ActivationLink: activationLink,
 	})
 
 	return ResponseSchema{
-		"message":    "berhasil membuat akun",
+		"message":    "berhasil membuat akun, silahkan cek email untuk verifikasi",
 		"created_at": data.CreatedAt,
 	}, nil
 }

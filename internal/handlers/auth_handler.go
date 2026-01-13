@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agmer17/golang_yapping/internal/service"
+	"github.com/Agmer17/golang_yapping/pkg"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 )
@@ -40,6 +41,7 @@ func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		auth.POST("/login", h.handleLogin)
 		auth.POST("/sign-up", h.handleSignUp)
 		auth.GET("/refresh-session", h.refreshSession)
+		auth.GET("/activate-account/:token", h.handleActivateAccount)
 	}
 
 }
@@ -97,7 +99,7 @@ func (h *AuthHandler) handleSignUp(c *gin.Context) {
 
 	}
 
-	resp, customErr := h.Service.SignUp(sBind.Username, sBind.Email, sBind.Fullname, sBind.Password, c.Request.Context())
+	resp, customErr := h.Service.SignUp(sBind.Username, sBind.Email, sBind.Fullname, sBind.Password, c.Request.Host, c.Request.Context())
 	if customErr != nil {
 		c.JSON(customErr.Code, gin.H{"error": customErr.Message})
 		c.Abort()
@@ -130,4 +132,20 @@ func (h *AuthHandler) refreshSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, accessToken)
+}
+
+func (h *AuthHandler) handleActivateAccount(c *gin.Context) {
+
+	token := c.Param("token")
+
+	if pkg.IsPStrEmpty(&token) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "parameter token tidak valid, harap masukan url dengan benar",
+		})
+		return
+
+	}
+
+	// todo : impl ngecek tokennya mas
+
 }
