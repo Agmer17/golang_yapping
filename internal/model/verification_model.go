@@ -15,6 +15,7 @@ type VerificationModel struct {
 	Id        uuid.UUID
 	UserId    uuid.UUID
 	Token     string
+	Type      string
 	UsedAt    time.Time
 	CreatedAt time.Time
 }

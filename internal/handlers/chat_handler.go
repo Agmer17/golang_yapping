@@ -156,6 +156,8 @@ func (chat *ChatHandler) GetChatAttachment(c *gin.Context) {
 		})
 	}
 
+	c.Header("X-Robots-Tag", "noindex, nofollow, noimageindex")
+	c.Header("Cache-Control", "private, no-store")
 	c.File(path)
 
 }

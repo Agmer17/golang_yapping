@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"time"
 
+	"github.com/Agmer17/golang_yapping/internal/event"
 	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/Agmer17/golang_yapping/internal/repository"
 	"github.com/Agmer17/golang_yapping/internal/ws"
@@ -74,6 +76,7 @@ type ChatService struct {
 	chatAtt     repository.ChatAttachmentInterface
 	storage     *FileStorage
 	RedisClient *redis.Client
+	EventBus    *event.EventBus
 }
 
 func NewChatService(c *repository.ChatRepository,
@@ -81,7 +84,8 @@ func NewChatService(c *repository.ChatRepository,
 	u *UserService,
 	ct *repository.ChatAttachmentRepository,
 	fileService *FileStorage,
-	redisCli *redis.Client) *ChatService {
+	redisCli *redis.Client,
+	eventBus *event.EventBus) *ChatService {
 	return &ChatService{
 		Pool:        c,
 		Hub:         h,
@@ -89,6 +93,7 @@ func NewChatService(c *repository.ChatRepository,
 		chatAtt:     ct,
 		storage:     fileService,
 		RedisClient: redisCli,
+		EventBus:    eventBus,
 	}
 }
 
@@ -145,11 +150,11 @@ func (cs *ChatService) SaveChat(d *ChatPostInput, ctx context.Context) *customer
 			}
 		}
 
-		cs.sendChat(ctx, savedChat, tokenAcc)
+		cs.sendChat(savedChat, tokenAcc)
 		return nil
 	}
 
-	cs.sendChat(ctx, savedChat, []string{})
+	cs.sendChat(savedChat, []string{})
 	return nil
 }
 
@@ -199,7 +204,6 @@ func (cs *ChatService) processAttachment(att []*multipart.FileHeader, chatId uui
 		}
 
 		ext, ok := cs.storage.IsTypeSupportted(mimeType)
-
 		if !ok {
 			cs.cleanUpAttachment(chatAttachments)
 			return nil, &customerrors.ServiceErrors{
@@ -233,7 +237,7 @@ func (cs *ChatService) processAttachment(att []*multipart.FileHeader, chatId uui
 
 }
 
-func (cs *ChatService) sendChat(ctx context.Context, savedChat repository.ChatWithSender, attData []string) {
+func (cs ChatService) sendChat(savedChat repository.ChatWithSender, attData []string) {
 
 	destRoom := "user:" + savedChat.ChatData.ReceiverId.String()
 	senderDestRoom := "user:" + savedChat.ChatData.SenderId.String()
@@ -253,17 +257,24 @@ func (cs *ChatService) sendChat(ctx context.Context, savedChat repository.ChatWi
 	pvDataByte, _ := json.Marshal(pvData)
 
 	wsEvent := ws.WebsocketEvent{
-		Action: ws.ActionPrivateMessage,
-		Detail: "NEW MESSAGE ARRIVED",
-		Type:   ws.TypeSystemOk,
-		Data:   pvDataByte,
+		Action:   ws.ActionPrivateMessage,
+		Detail:   "NEW MESSAGE ARRIVED",
+		Type:     ws.TypeSystemOk,
+		Receiver: destRoom,
+		Data:     pvDataByte,
 	}
 
-	wsEventByte, _ := json.Marshal(wsEvent)
+	senderWsEvent := ws.WebsocketEvent{
+		Action:   ws.ActionPrivateMessage,
+		Detail:   "MESSAGE SUCCESSFULLY DELIVERED",
+		Type:     ws.TypeSystemOk,
+		Receiver: senderDestRoom,
+		Data:     pvDataByte,
+	}
 
-	cs.Hub.SendPayloadTo(destRoom, wsEventByte)
-	cs.Hub.SendPayloadTo(senderDestRoom, wsEventByte)
+	cs.EventBus.Publish(event.WsEventSendPayload, wsEvent)
 
+	cs.EventBus.Publish(event.WsEventSendPayload, senderWsEvent)
 }
 
 func parseToChatModel(cp *ChatPostInput) (model.ChatModel, error) {
@@ -329,24 +340,17 @@ func (cs *ChatService) getAttachmentFromToken(ctx context.Context, key string) (
 	return token, nil
 }
 
-func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAttachment, sender uuid.UUID, receiverId uuid.UUID) ([]string, error) {
-
-	var listTempData []map[string]any
-
-	var tokenList []string
-
-	for _, v := range att {
-		listTempData = append(listTempData, map[string]any{
-			"filename":    v.FileName,
-			"sender_id":   sender.String(),
-			"receiver_id": receiverId.String(),
-		})
-
-	}
+func (cs *ChatService) setTokenToAccess(
+	ctx context.Context,
+	att []model.ChatAttachment,
+	sender uuid.UUID,
+	receiverId uuid.UUID,
+) ([]string, error) {
 
 	pipe := cs.RedisClient.Pipeline()
+	tokenList := make([]string, 0, len(att))
 
-	for _, data := range listTempData {
+	for _, v := range att {
 		token, err := pkg.GenerateRandomStringToken(16)
 		if err != nil {
 			return nil, err
@@ -354,16 +358,22 @@ func (cs *ChatService) setTokenToAccess(ctx context.Context, att []model.ChatAtt
 
 		key := "media_access:private_chat:" + token
 
+		data := map[string]string{
+			"filename":    v.FileName,
+			"sender_id":   sender.String(),
+			"receiver_id": receiverId.String(),
+			"type":        v.MediaType,
+		}
+
 		pipe.HSet(ctx, key, data)
 
-		pipe.Expire(ctx, key, 45*time.Second)
+		ttl := cs.resolveMediaTTL(v.MediaType, v.FileName)
+		pipe.Expire(ctx, key, ttl)
 
 		tokenList = append(tokenList, token)
 	}
 
-	_, err := pipe.Exec(ctx)
-
-	if err != nil {
+	if _, err := pipe.Exec(ctx); err != nil {
 		return nil, err
 	}
 
@@ -542,4 +552,29 @@ func (cs *ChatService) DeleteChat(ctx context.Context, userId uuid.UUID, chatId 
 	cs.storage.DeleteAllPrivateFile(filesToDelete, "chat_attachment")
 	return nil
 
+}
+
+func (cs *ChatService) resolveMediaTTL(
+	mediaType string,
+	filename string,
+) time.Duration {
+
+	const defaultTTL = 5 * time.Minute
+
+	if mediaType != model.TypeVideo {
+		return defaultTTL
+	}
+
+	duration, err := cs.storage.GetVideoDurationPVT(filename, "chat_attachment")
+	if err != nil {
+		fmt.Println("get video duration error:", err)
+		return defaultTTL
+	}
+
+	// safeguard minimum TTL
+	if duration < defaultTTL {
+		return defaultTTL
+	}
+
+	return duration
 }

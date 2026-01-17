@@ -17,10 +17,11 @@ const (
 )
 
 type WebsocketEvent struct {
-	Action string          `json:"action"`
-	Detail string          `json:"detail"`
-	Type   string          `json:"type"`
-	Data   json.RawMessage `json:"data"`
+	Action   string          `json:"action"`
+	Detail   string          `json:"detail"`
+	Type     string          `json:"type"`
+	Receiver string          `json:"-"`
+	Data     json.RawMessage `json:"data"`
 }
 
 type NotificationEventData struct {

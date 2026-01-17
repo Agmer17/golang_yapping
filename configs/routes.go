@@ -12,6 +12,7 @@ import (
 func SetUpRouter(p *pgxpool.Pool, r *redis.Client, svc *serviceConfigs) *gin.Engine {
 
 	authHandler := handlers.NewAuthHandler(svc.AuthService)
+	verificationRoute := handlers.NewVerificationHandler(svc.VerificationService)
 
 	// ------------------- PROTECTED --------------------
 	userHandler := handlers.NewUserHandler(svc.UserService)
@@ -26,7 +27,9 @@ func SetUpRouter(p *pgxpool.Pool, r *redis.Client, svc *serviceConfigs) *gin.Eng
 	api.Static("/uploads", svc.FileService.Public)
 
 	authHandler.RegisterRoutes(api)
+	verificationRoute.RegisterRoutes(api)
 
+	// ============= PROTECTED ========================
 	protected := api.Group("/")
 
 	protected.Use(middleware.AuthMiddleware())

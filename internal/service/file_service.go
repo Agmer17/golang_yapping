@@ -1,16 +1,24 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/Agmer17/golang_yapping/internal/model"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 var allowedMimes = map[string]bool{
@@ -133,15 +141,7 @@ func (storage *FileStorage) SavePrivateFile(
 
 	fileName := uuid.New().String() + ext
 
-	parts := []string{
-		storage.Private,
-	}
-
-	parts = append(parts, place...)
-
-	parts = append(parts, fileName)
-
-	fullPath := filepath.Join(parts...)
+	fullPath := storage.GetPathPrivateFile(fileName, place...)
 
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return "", err
@@ -158,6 +158,54 @@ func (storage *FileStorage) SavePrivateFile(
 	}
 
 	return fileName, nil
+}
+
+func (storage *FileStorage) SaveAllPrivateFiles(
+	context context.Context,
+	files []*multipart.FileHeader,
+	filesExt []string,
+	place ...string) ([]string, error) {
+
+	if len(files) != len(filesExt) {
+		return []string{}, errors.New("The files len and files ext len aren't the same!")
+	}
+
+	results := make([]string, len(files))
+
+	tpool, ctx := errgroup.WithContext(context)
+
+	tpool.SetLimit(runtime.NumCPU())
+
+	// for loop save file multithread
+
+	for index, file := range files {
+
+		tpool.Go(func() error {
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			filename, err := storage.SavePrivateFile(file, filesExt[index], place...)
+
+			if err != nil {
+				return err
+			}
+
+			results[index] = filename
+
+			return nil
+		})
+
+	}
+
+	if err := tpool.Wait(); err != nil {
+		return results, err
+	}
+
+	return results, nil
 }
 
 func (storage *FileStorage) DeletePrivateFile(fname string, place ...string) {
@@ -235,14 +283,41 @@ func (storage *FileStorage) IsTypeSupportted(mimeType string) (string, bool) {
 func (storage *FileStorage) GetMediaType(mime string) string {
 	switch {
 	case strings.HasPrefix(mime, "image/"):
-		return "IMAGE"
+		return model.TypeImage
 	case strings.HasPrefix(mime, "video/"):
-		return "VIDEO"
+		return model.TypeVideo
 	case strings.HasPrefix(mime, "audio/"):
-		return "AUDIO"
+		return model.TypeAudio
 	case strings.HasPrefix(mime, "application/"):
-		return "DOCUMENT"
+		return model.TypeDocument
 	default:
 		return ""
 	}
+}
+
+func (storage *FileStorage) GetVideoDurationPVT(filenames string, place ...string) (time.Duration, error) {
+
+	fullpath := storage.GetPathPrivateFile(filenames, place...)
+
+	cmd := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		fullpath,
+	)
+
+	out, err := cmd.Output()
+
+	if err != nil {
+		return 0, err
+	}
+
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return time.Duration(seconds * float64(time.Second)), nil
+
 }

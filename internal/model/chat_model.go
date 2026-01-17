@@ -6,6 +6,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// 'VIDEO', 'AUDIO', 'IMAGE', 'DOCUMENT'
+
+const (
+	TypeVideo    = "VIDEO"
+	TypeAudio    = "AUDIO"
+	TypeImage    = "IMAGE"
+	TypeDocument = "DOCUMENT"
+)
+
 type ChatModel struct {
 	Id         uuid.UUID
 	SenderId   uuid.UUID

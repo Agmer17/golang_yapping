@@ -13,11 +13,12 @@ import (
 )
 
 type serviceConfigs struct {
-	AuthService *service.AuthService
-	ChatService *service.ChatService
-	UserService *service.UserService
-	FileService *service.FileStorage
-	Hub         *ws.Hub
+	AuthService         *service.AuthService
+	ChatService         *service.ChatService
+	UserService         *service.UserService
+	FileService         *service.FileStorage
+	Hub                 *ws.Hub
+	VerificationService *service.VerificationService
 
 	EmailService *pkg.MailSender
 
@@ -37,6 +38,7 @@ func NewServiceConfigs(
 	userRepo := repository.NewUserRepo(pool)
 	chatRepo := repository.NewChatRepo(pool)
 	chatAttachmentRepo := repository.NewChatAttachmentRepo(pool)
+	VerifcationRepo := repository.NewVerificationRepo(pool)
 
 	// email sender
 	emailService, err := pkg.NewMailSender(email, emailPw)
@@ -45,11 +47,6 @@ func NewServiceConfigs(
 	if err != nil {
 		panic(err)
 	}
-
-	// fmt.Println("======================================================")
-	// fmt.Println(email)
-	// fmt.Println(emailPw)
-	// fmt.Println("======================================================")
 
 	// event bus backgorund job
 	eventBus := event.NewEventBus(hub, eventContext, emailService)
@@ -61,16 +58,18 @@ func NewServiceConfigs(
 	userService := service.NewUserService(userRepo)
 
 	fileService := service.NewFileService()
-	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService, r)
+	chatService := service.NewChatService(chatRepo, hub, userService, chatAttachmentRepo, fileService, r, eventBus)
+	verificationService := service.NewVerificationService(VerifcationRepo, r)
 
 	return &serviceConfigs{
-		AuthService:  authService,
-		ChatService:  chatService,
-		FileService:  fileService,
-		UserService:  userService,
-		Hub:          hub,
-		EmailService: emailService,
-		EventBus:     eventBus,
+		AuthService:         authService,
+		ChatService:         chatService,
+		FileService:         fileService,
+		UserService:         userService,
+		Hub:                 hub,
+		EmailService:        emailService,
+		EventBus:            eventBus,
+		VerificationService: verificationService,
 	}
 
 }
